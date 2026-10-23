@@ -3,22 +3,50 @@ Unit and integration test suite for Keynova's Readiness Scoring Engine
 (scoring.py) and Scan Diff Comparator (diff.py).
 
 Verifies mathematical properties, boundary conditions, edge cases,
-and ground-truth comparisons against vulnerable and remediated payment suites.
+and ground-truth comparisons against vulnerable_payment_suite and
+remediated_payment_suite fixtures.
 """
 
+import sys
 from pathlib import Path
 from typing import List, Dict, Any
 import pytest
+
+# Ensure backend root is on sys.path for direct script execution and diverse test runners
+BACKEND_DIR = Path(__file__).resolve().parent.parent
+if str(BACKEND_DIR) not in sys.path:
+    sys.path.insert(0, str(BACKEND_DIR))
 
 from keynova.services.intelligence.scoring import (
     calculate_readiness_score,
     SEVERITY_WEIGHTS,
 )
 from keynova.services.intelligence.diff import compare_scans
+from keynova.services.scanner.python_ast import scan_python_file
+from keynova.services.scanner.manifests import scan_manifest_file
 
 FIXTURES_DIR = Path(__file__).resolve().parent.parent.parent / "test-fixtures"
+if not FIXTURES_DIR.exists():
+    FIXTURES_DIR = Path(__file__).resolve().parent.parent / "test-fixtures"
 VULN_FIXTURE_DIR = FIXTURES_DIR / "vulnerable_payment_suite"
 REMED_FIXTURE_DIR = FIXTURES_DIR / "remediated_payment_suite"
+
+
+def _scan_fixture_directory(dir_path: Path) -> List[Dict[str, Any]]:
+    """Helper to scan a fixture directory using Keynova's AST and manifest scanners."""
+    findings = []
+    files = [
+        p for p in dir_path.rglob("*")
+        if p.is_file() and not any(part in [".git", "__pycache__", ".venv"] for part in p.parts)
+    ]
+    for f in sorted(files, key=lambda p: str(p)):
+        if f.suffix == ".py":
+            py_findings = scan_python_file(f, relative_to=dir_path)
+            findings.extend([item.to_dict() for item in py_findings])
+        elif f.name.lower() in ["requirements.txt", "package.json"]:
+            manifest_findings = scan_manifest_file(f, relative_to=dir_path)
+            findings.extend(manifest_findings)
+    return findings
 
 
 # ============================================================================
@@ -284,20 +312,9 @@ class TestScanDiffComparator:
 
 
 # ============================================================================
-# 3. FIXTURE INTEGRATION TESTS (optional when scanner & fixtures are available)
+# 3. FIXTURE INTEGRATION TESTS (vulnerable vs remediated payment suites)
 # ============================================================================
 
-def _can_run_fixture_ast_scan() -> bool:
-    """Helper to check if AST scanners and fixture directories are available."""
-    try:
-        from keynova.services.scanner.python_ast import scan_python_file  # noqa: F401
-        from keynova.services.scanner.manifests import scan_manifest_file  # noqa: F401
-        return VULN_FIXTURE_DIR.exists() and REMED_FIXTURE_DIR.exists()
-    except ImportError:
-        return False
-
-
-@pytest.mark.skipif(not _can_run_fixture_ast_scan(), reason="Scanner modules or fixtures not yet merged into this branch")
 class TestFixtureScoringAndDiffIntegration:
     """
     Integration tests against actual sample test fixture codebases:
@@ -306,39 +323,106 @@ class TestFixtureScoringAndDiffIntegration:
     """
 
     def test_fixture_directories_exist(self):
+        """Verifies test fixture folders are present and populated."""
         assert VULN_FIXTURE_DIR.exists(), f"Missing {VULN_FIXTURE_DIR}"
         assert REMED_FIXTURE_DIR.exists(), f"Missing {REMED_FIXTURE_DIR}"
+        assert (VULN_FIXTURE_DIR / "backend" / "crypto_service.py").exists()
+        assert (REMED_FIXTURE_DIR / "backend" / "crypto_service.py").exists()
 
     def test_vulnerable_fixture_scan_and_readiness_scoring(self):
-        from keynova.services.scanner.python_ast import scan_python_file
-        from keynova.services.scanner.manifests import scan_manifest_file
+        """
+        Scans vulnerable_payment_suite and verifies:
+        1. 4 findings detected (RSA-2048, ECC-SECP256R1, MD5, PyCryptodome).
+        2. 100% scan coverage (4/4 files).
+        3. Readiness score calculation:
+           - RSA: 25.0 * 1.4 * 0.95 = 33.25
+           - ECC: 12.0 * 1.4 * 0.90 = 15.12
+           - MD5: 2.0 * 1.0 * 1.0 = 2.00
+           - PyCryptodome: 2.0 * 1.0 * 1.0 = 2.00
+           Total Penalty = 52.37 -> Base Score = 47.63 -> Readiness Score = 48
+           (Sprint plan target estimate: ~46-48).
+        """
+        findings = _scan_fixture_directory(VULN_FIXTURE_DIR)
+        assert len(findings) == 4, f"Expected 4 vulnerable findings, got {len(findings)}"
 
-        findings = []
-        for f in sorted(VULN_FIXTURE_DIR.rglob("*")):
-            if f.is_file() and not any(part in [".git", "__pycache__", ".venv"] for part in f.parts):
-                if f.suffix == ".py":
-                    py_findings = scan_python_file(f, relative_to=VULN_FIXTURE_DIR)
-                    findings.extend([item.to_dict() for item in py_findings])
-                elif f.name.lower() in ["requirements.txt", "package.json"]:
-                    findings.extend(scan_manifest_file(f, relative_to=VULN_FIXTURE_DIR))
+        algorithms = {f["algorithm"] for f in findings}
+        assert "RSA" in algorithms
+        assert "ECC-SECP256R1" in algorithms
+        assert "MD5" in algorithms
+        assert any("DES" in a or "RSA" in a or "PyCryptodome" in f.get("library", "") for a, f in zip(algorithms, findings))
+
+        # Check HNDL flags
+        hndl_findings = [f for f in findings if f.get("hndl")]
+        assert len(hndl_findings) >= 1, "At least RSA-2048 must be marked HNDL"
 
         report = calculate_readiness_score(findings, total_files=4, scanned_files=4)
-        assert 45 <= report["readiness_score"] <= 50
         assert report["coverage_percent"] == 100.0
+        assert report["scanned_files"] == 4
+        assert report["total_files"] == 4
+
+        # Validate score is within expected critical threshold (45 <= score <= 50)
+        # Note: Actual formula yields 48 due to AST scanner's confidence=0.95 on RSA
+        assert 45 <= report["readiness_score"] <= 50
+        assert report["readiness_score"] == 48
 
     def test_remediated_fixture_scan_and_readiness_scoring(self):
-        from keynova.services.scanner.python_ast import scan_python_file
-        from keynova.services.scanner.manifests import scan_manifest_file
-
-        findings = []
-        for f in sorted(REMED_FIXTURE_DIR.rglob("*")):
-            if f.is_file() and not any(part in [".git", "__pycache__", ".venv"] for part in f.parts):
-                if f.suffix == ".py":
-                    py_findings = scan_python_file(f, relative_to=REMED_FIXTURE_DIR)
-                    findings.extend([item.to_dict() for item in py_findings])
-                elif f.name.lower() in ["requirements.txt", "package.json"]:
-                    findings.extend(scan_manifest_file(f, relative_to=REMED_FIXTURE_DIR))
+        """
+        Scans remediated_payment_suite and verifies:
+        1. Zero vulnerable findings detected.
+        2. 100% scan coverage (4/4 files).
+        3. Keynova Readiness Index reaches a perfect 100/100.
+        """
+        findings = _scan_fixture_directory(REMED_FIXTURE_DIR)
+        assert len(findings) == 0, f"Remediated suite should have 0 vulnerable findings, found: {findings}"
 
         report = calculate_readiness_score(findings, total_files=4, scanned_files=4)
         assert report["readiness_score"] == 100
         assert report["coverage_percent"] == 100.0
+        assert report["total_penalty"] == 0.0
+        assert report["hndl_count"] == 0
+
+    def test_baseline_vs_remediated_diff_and_clean_verification(self):
+        """
+        Compares vulnerable_payment_suite (baseline) against remediated_payment_suite (target).
+        Verifies:
+        - 4 resolved findings
+        - 0 added findings
+        - 0 unchanged findings
+        - verification_status == 'verified_clean'
+        - Readiness delta represents a major leap (+52 points leap from 48 -> 100)
+        """
+        vuln_findings = _scan_fixture_directory(VULN_FIXTURE_DIR)
+        remed_findings = _scan_fixture_directory(REMED_FIXTURE_DIR)
+
+        vuln_score_report = calculate_readiness_score(vuln_findings, total_files=4, scanned_files=4)
+        remed_score_report = calculate_readiness_score(remed_findings, total_files=4, scanned_files=4)
+
+        vuln_score = vuln_score_report["readiness_score"]
+        remed_score = remed_score_report["readiness_score"]
+
+        diff = compare_scans(
+            baseline_findings=vuln_findings,
+            target_findings=remed_findings,
+            baseline_score=vuln_score,
+            target_score=remed_score,
+        )
+
+        assert diff["resolved_count"] == 4
+        assert diff["added_count"] == 0
+        assert diff["unchanged_count"] == 0
+        assert diff["verification_status"] == "verified_clean"
+
+        # Readiness delta: target_score - baseline_score
+        assert diff["readiness_delta"] == remed_score - vuln_score
+        assert diff["readiness_delta"] == 52  # 100 - 48 = +52
+        assert diff["readiness_delta"] >= 50
+
+        # Confirm all 4 baseline fingerprints are listed in resolved_findings
+        resolved_fps = {f["fingerprint"] for f in diff["resolved_findings"]}
+        vuln_fps = {f["fingerprint"] for f in vuln_findings}
+        assert resolved_fps == vuln_fps
+
+
+if __name__ == "__main__":
+    pytest.main([__file__, "-v"])
+

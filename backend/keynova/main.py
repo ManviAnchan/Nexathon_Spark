@@ -6,6 +6,8 @@ from keynova.core.database import init_db, DB_TYPE
 from keynova.api.v1.projects import router as projects_router
 from keynova.api.v1.scans import router as scans_router
 from keynova.api.v1.graph import router as graph_router
+from keynova.api.v1.export import router as export_router
+from keynova.api.v1.tls import router as tls_router
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -34,6 +36,8 @@ app.add_middleware(
 app.include_router(projects_router, prefix="/api/v1/projects", tags=["Projects"])
 app.include_router(scans_router, prefix="/api/v1/scans", tags=["Scans"])
 app.include_router(graph_router, prefix="/api/v1/graph", tags=["Cryptographic Graph"])
+app.include_router(export_router, prefix="/api/v1/export", tags=["Compliance Export"])
+app.include_router(tls_router, prefix="/api/v1/tls", tags=["TLS Inspection"])
 
 @app.get("/health", tags=["Health"])
 def health_check():

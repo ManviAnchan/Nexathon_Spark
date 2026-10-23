@@ -138,4 +138,5 @@ class TlsInspectionResponse(BaseModel):
     certificate_issuer: str
     key_size: int
     quantum_safe: bool
+    is_pqc_hybrid: Optional[bool] = False
     error: Optional[str] = None
