@@ -4,6 +4,8 @@ import { Sidebar, type WorkspaceSection } from './components/Sidebar';
 import { Dashboard } from './screens/Dashboard';
 import { FindingsExplorer } from './screens/FindingsExplorer';
 import { DependencyGraph } from './screens/DependencyGraph';
+import { VerificationScreen } from './screens/VerificationScreen';
+import './verification.css';
 import './graph.css';
 import './findings.css';
 import './dashboard.css';
@@ -23,6 +25,7 @@ const PROJECT_ID = 'demo-keynova';
 export function App() {
   const [section, setSection] = useState<WorkspaceSection>('dashboard');
   const [scan, setScan] = useState<ScanStatus | null>(null);
+  const [baselineScan, setBaselineScan] = useState<ScanStatus | null>(null);
   const [findings, setFindings] = useState<Finding[]>([]);
   const [selectedFinding, setSelectedFinding] = useState<Finding | null>(null);
   const [uploadOpen, setUploadOpen] = useState(false);
@@ -34,6 +37,7 @@ export function App() {
     void Promise.all([fetchScan('demo-scan'), fetchFindings('demo-scan')]).then(([initialScan, result]) => {
       if (cancelled) return;
       setScan(initialScan);
+      setBaselineScan(initialScan);
       setFindings(result.items);
       setDemoData(initialScan.id.startsWith('demo-'));
     });
@@ -47,6 +51,7 @@ export function App() {
 
   const handleScanCompleted = async (scanId: string) => {
     const [nextScan, nextFindings] = await Promise.all([fetchScan(scanId), fetchFindings(scanId)]);
+    setBaselineScan(previous => previous ?? scan ?? nextScan);
     setScan(nextScan);
     setFindings(nextFindings.items);
     setDemoData(nextScan.id.startsWith('demo-'));
@@ -67,6 +72,8 @@ export function App() {
           <FindingsExplorer findings={findings} selectedFinding={selectedFinding} onSelectFinding={setSelectedFinding} onNavigate={navigate} />
         ) : section === 'graph' ? (
           <DependencyGraph scanId={scan?.id ?? null} projectName={scan?.archive_name || 'Current project'} findings={findings} />
+        ) : section === 'verification' ? (
+          <VerificationScreen currentScan={scan} baselineScan={baselineScan} onTriggerRescan={() => setUploadOpen(true)} />
         ) : (
           <section className="welcome-panel">
             <div className="eyebrow"><Activity size={14} /> FRONTEND FOUNDATION</div>
@@ -74,7 +81,7 @@ export function App() {
             <div className="foundation-card"><span className="card-icon"><Activity size={18} /></span><div><strong>Screen foundation is ready</strong><small>This screen will be completed in its scheduled sprint milestone.</small></div></div>
           </section>
         )}
-        <footer className="page-footer"><span>KEYNOVA <i /> POST-QUANTUM READINESS</span><span>Local-first by design</span></footer>
+        {section === 'playground' && <footer className="page-footer"><span>KEYNOVA <i /> POST-QUANTUM READINESS</span><span>Local-first by design</span></footer>}
       </main>
       <UploadModal isOpen={uploadOpen} onClose={() => setUploadOpen(false)} projectId={PROJECT_ID} onScanCompleted={handleScanCompleted} />
     </div>
