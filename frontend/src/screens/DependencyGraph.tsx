@@ -72,7 +72,7 @@ export function DependencyGraph({ scanId, projectName, findings }: DependencyGra
   for (const kind of columns) grouped[kind].forEach((node, index) => rowY.set(node.id, 64 + index * 104));
   const height = Math.max(400, ...columns.map(kind => 64 + grouped[kind].length * 104));
   const byId = new Map(graph.nodes.map(node => [node.id, node]));
-  const colorFor = (node?: ViewNode) => node?.hndl || node?.severity === 'critical' ? '#fb7185' : node?.severity === 'high' ? '#fb923c' : '#22d3ee';
+  const colorFor = (node?: ViewNode) => node?.hndl || node?.severity === 'critical' ? '#a87369' : node?.severity === 'high' ? '#9d795e' : '#8d8577';
 
   return <section className="graph-page"><div className="graph-content"><div className="graph-heading"><div><span className="eyebrow"><Network size={13}/> DEPENDENCY MAP</span><h1>Cryptographic graph</h1><p>Trace how code paths connect to cryptographic dependencies and algorithms.</p></div><div className="graph-controls"><button onClick={() => setZoom(value => Math.max(.65, value - .1))} aria-label="Zoom out"><ZoomOut size={15}/></button><span>{Math.round(zoom * 100)}%</span><button onClick={() => setZoom(value => Math.min(1.35, value + .1))} aria-label="Zoom in"><ZoomIn size={15}/></button><button onClick={() => setZoom(1)} aria-label="Reset zoom"><Maximize2 size={15}/></button></div></div>
     <div className="graph-legend"><span><i className="legend-safe"/>Dependency path</span><span><i className="legend-risk"/>HNDL or critical path</span><span>{graph.nodes.length} nodes <b>·</b> {graph.edges.length} links</span></div>
