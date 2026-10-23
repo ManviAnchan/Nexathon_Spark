@@ -2,7 +2,7 @@ from fastapi import APIRouter, HTTPException
 from typing import Optional
 
 try:
-    from keynova.core.models import BenchmarkRequest, BenchmarkResponse
+    from keynova.core.models import BenchmarkRequest, BenchmarkResponse  # type: ignore
 except ImportError:
     from pydantic import BaseModel, Field
 

@@ -246,13 +246,13 @@ def benchmark_algorithm(algorithm: str, iterations: int = 100) -> Dict[str, Any]
     meta = SUPPORTED_ALGORITHMS[canonical_name]
 
     if canonical_name == "ML-KEM-768":
-        import pqcrypto.kem.ml_kem_768 as kem_mod
+        import pqcrypto.kem.ml_kem_768 as kem_mod  # type: ignore
         timings = _benchmark_kem(kem_mod, iterations)
     elif canonical_name == "ML-KEM-1024":
-        import pqcrypto.kem.ml_kem_1024 as kem_mod
+        import pqcrypto.kem.ml_kem_1024 as kem_mod  # type: ignore
         timings = _benchmark_kem(kem_mod, iterations)
     elif canonical_name == "ML-DSA-65":
-        import pqcrypto.sign.ml_dsa_65 as dsa_mod
+        import pqcrypto.sign.ml_dsa_65 as dsa_mod  # type: ignore
         timings = _benchmark_ml_dsa_65(dsa_mod, iterations)
     elif canonical_name == "RSA-2048":
         timings = _benchmark_rsa_2048(iterations)
