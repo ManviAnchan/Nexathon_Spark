@@ -4,6 +4,8 @@ import zipfile
 try:
     from fastapi.testclient import TestClient
     from keynova.main import app
+    from keynova.core.database import init_db
+    init_db()
     client = TestClient(app, raise_server_exceptions=True)
     HAS_TESTCLIENT = True
 except (ImportError, RuntimeError):
