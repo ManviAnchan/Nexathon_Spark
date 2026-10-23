@@ -1,3 +1,11 @@
+"""
+Keynova Post-Quantum Cryptographic Remediation Engine.
+
+Provides evidence-grounded migration guidance and unified diffs targeting NIST FIPS 203
+(ML-KEM-768/1024) and FIPS 204 (ML-DSA-65) with local Ollama LLM integration (qwen2.5-coder:7b),
+strict cryptographic semantic validation, and 100% reliable offline deterministic fallback.
+"""
+
 import os
 import json
 import re
