@@ -433,22 +433,68 @@ def generate_pdf_report(
     ))
     story.append(HRFlowable(width="100%", thickness=2, color=c_accent, spaceBefore=4, spaceAfter=20))
 
+    # Body / description paragraph style with proper line height
+    body_style = ParagraphStyle(
+        'RepBody',
+        parent=styles['Normal'],
+        fontName='Helvetica',
+        fontSize=8,
+        leading=11.5,
+        textColor=c_dark
+    )
+
+    # Distinct score gauge flowables with dedicated leadings to prevent text overlapping
+    p_gauge_title = Paragraph(
+        "<b>KEYNOVA READINESS INDEX (R)</b>",
+        ParagraphStyle(
+            'ScoreTitle',
+            parent=styles['Normal'],
+            fontName='Helvetica-Bold',
+            fontSize=9,
+            leading=12,
+            alignment=1,
+            textColor=colors.HexColor('#64748b'),
+            spaceAfter=4
+        )
+    )
+    p_gauge_score = Paragraph(
+        f"<b>{score_display}</b>",
+        ParagraphStyle(
+            'ScoreDisplay',
+            parent=styles['Normal'],
+            fontName='Helvetica-Bold',
+            fontSize=38,
+            leading=44,
+            alignment=1,
+            textColor=colors.HexColor(score_color),
+            spaceAfter=4
+        )
+    )
+    p_gauge_badge = Paragraph(
+        f"<b>[{status_label}]</b>",
+        ParagraphStyle(
+            'ScoreBadge',
+            parent=styles['Normal'],
+            fontName='Helvetica-Bold',
+            fontSize=11,
+            leading=14,
+            alignment=1,
+            textColor=colors.HexColor(score_color),
+            spaceAfter=6
+        )
+    )
+
     # Large visual Readiness Index score gauge and risk tier badge
     gauge_table_data = [
         [
-            Paragraph(
-                f"<font size='9' color='#64748b'>KEYNOVA READINESS INDEX (R)</font><br/>"
-                f"<font size='38' color='{score_color}'><b>{score_display}</b></font><br/>"
-                f"<font size='11' color='{score_color}'><b>[{status_label}]</b></font>",
-                ParagraphStyle('ScoreStyle', parent=cell_style, alignment=1, spaceAfter=8)
-            )
+            [p_gauge_title, p_gauge_score, p_gauge_badge]
         ],
         [
             Paragraph(
                 f"<b>Executive Posture:</b> {score_interpretation}<br/><br/>"
                 f"<b>Active HNDL Exposures:</b> <font color='{c_danger.hexval()}'><b>{hndl_count}</b></font> | "
                 f"<b>Audit Coverage:</b> {coverage_str} ({files_str} files scanned)",
-                cell_style
+                body_style
             )
         ]
     ]
@@ -529,11 +575,11 @@ def generate_pdf_report(
     story.append(Paragraph("<b>Cryptographic Asset Severity Breakdown</b>", ParagraphStyle('Sub', parent=h1_style, fontSize=9.5)))
     summary_cards_data = [
         [
-            Paragraph(f"<font size='12' color='{c_primary.hexval()}'><b>{total_findings}</b></font><br/><font size='6' color='#64748b'>TOTAL ASSETS</font>", ParagraphStyle('C1', parent=cell_style, alignment=1)),
-            Paragraph(f"<font size='12' color='{c_danger.hexval()}'><b>{sev_counts['critical']}</b></font><br/><font size='6' color='#64748b'>CRITICAL</font>", ParagraphStyle('C2', parent=cell_style, alignment=1)),
-            Paragraph(f"<font size='12' color='#ea580c'><b>{sev_counts['high']}</b></font><br/><font size='6' color='#64748b'>HIGH</font>", ParagraphStyle('C3', parent=cell_style, alignment=1)),
-            Paragraph(f"<font size='12' color='{c_warning.hexval()}'><b>{sev_counts['medium']}</b></font><br/><font size='6' color='#64748b'>MEDIUM</font>", ParagraphStyle('C4', parent=cell_style, alignment=1)),
-            Paragraph(f"<font size='12' color='{c_muted.hexval()}'><b>{sev_counts['low']}</b></font><br/><font size='6' color='#64748b'>LOW</font>", ParagraphStyle('C5', parent=cell_style, alignment=1)),
+            Paragraph(f"<font size='12' color='{c_primary.hexval()}'><b>{total_findings}</b></font><br/><font size='6' color='#64748b'>TOTAL ASSETS</font>", ParagraphStyle('C1', parent=cell_style, alignment=1, leading=12)),
+            Paragraph(f"<font size='12' color='{c_danger.hexval()}'><b>{sev_counts['critical']}</b></font><br/><font size='6' color='#64748b'>CRITICAL</font>", ParagraphStyle('C2', parent=cell_style, alignment=1, leading=12)),
+            Paragraph(f"<font size='12' color='#ea580c'><b>{sev_counts['high']}</b></font><br/><font size='6' color='#64748b'>HIGH</font>", ParagraphStyle('C3', parent=cell_style, alignment=1, leading=12)),
+            Paragraph(f"<font size='12' color='{c_warning.hexval()}'><b>{sev_counts['medium']}</b></font><br/><font size='6' color='#64748b'>MEDIUM</font>", ParagraphStyle('C4', parent=cell_style, alignment=1, leading=12)),
+            Paragraph(f"<font size='12' color='{c_muted.hexval()}'><b>{sev_counts['low']}</b></font><br/><font size='6' color='#64748b'>LOW</font>", ParagraphStyle('C5', parent=cell_style, alignment=1, leading=12)),
         ]
     ]
     t_summary = Table(summary_cards_data, colWidths=[106, 106, 106, 107, 107])

@@ -11,7 +11,7 @@ from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 
 from keynova.core.database import get_db, Scan
-from keynova.services.exporters.cbom import generate_cyclonedx_cbom
+from keynova.services.exporters.cbom import generate_cyclonedx_cbom, serialize_cbom_json
 
 try:
     from keynova.services.exporters.pdf import generate_pdf_report
@@ -38,8 +38,10 @@ def export_cbom(scan_id: str, db: Session = Depends(get_db)):
                 findings=DEMO_FINDINGS,
                 readiness_score=48
             )
-            return JSONResponse(
-                content=cbom,
+            cbom_json = serialize_cbom_json(cbom, indent=2)
+            return Response(
+                content=cbom_json,
+                media_type="application/json",
                 headers={"Content-Disposition": f"attachment; filename=Keynova_CBOM_{scan_id[:8]}.json"}
             )
         raise HTTPException(status_code=404, detail="Scan not found")
@@ -72,8 +74,10 @@ def export_cbom(scan_id: str, db: Session = Depends(get_db)):
         readiness_score=scan.readiness_score if scan.readiness_score is not None else 0
     )
 
-    return JSONResponse(
-        content=cbom,
+    cbom_json = serialize_cbom_json(cbom, indent=2)
+    return Response(
+        content=cbom_json,
+        media_type="application/json",
         headers={"Content-Disposition": f"attachment; filename=Keynova_CBOM_{scan_id[:8]}.json"}
     )
 

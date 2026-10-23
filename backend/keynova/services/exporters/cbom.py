@@ -1,3 +1,4 @@
+import json
 import re
 import uuid
 from datetime import datetime, timezone
@@ -810,3 +811,12 @@ def generate_cyclonedx_cbom(
         },
         "components": components
     }
+
+
+def serialize_cbom_json(cbom: Dict[str, Any], indent: int = 2) -> str:
+    """
+    Serializes a CycloneDX CBOM dictionary into human-readable, pretty-printed JSON
+    with standard line breaks and indentation.
+    """
+    return json.dumps(cbom, indent=indent)
+
