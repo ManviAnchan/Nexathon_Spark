@@ -3,6 +3,8 @@ import { Activity, ArrowUpRight } from 'lucide-react';
 import { Sidebar, type WorkspaceSection } from './components/Sidebar';
 import { Dashboard } from './screens/Dashboard';
 import { FindingsExplorer } from './screens/FindingsExplorer';
+import { DependencyGraph } from './screens/DependencyGraph';
+import './graph.css';
 import './findings.css';
 import './dashboard.css';
 import { UploadModal } from './components/UploadModal';
@@ -63,6 +65,8 @@ export function App() {
           <Dashboard scan={scan} findings={findings} isDemo={demoData} onOpenFinding={finding => { setSelectedFinding(finding); setSection('findings'); }} onNavigate={navigate} />
         ) : section === 'findings' ? (
           <FindingsExplorer findings={findings} selectedFinding={selectedFinding} onSelectFinding={setSelectedFinding} onNavigate={navigate} />
+        ) : section === 'graph' ? (
+          <DependencyGraph scanId={scan?.id ?? null} projectName={scan?.archive_name || 'Current project'} findings={findings} />
         ) : (
           <section className="welcome-panel">
             <div className="eyebrow"><Activity size={14} /> FRONTEND FOUNDATION</div>
