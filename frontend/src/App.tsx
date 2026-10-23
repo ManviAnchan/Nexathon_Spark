@@ -5,6 +5,7 @@ import { Dashboard } from './screens/Dashboard';
 import { FindingsExplorer } from './screens/FindingsExplorer';
 import { DependencyGraph } from './screens/DependencyGraph';
 import { VerificationScreen } from './screens/VerificationScreen';
+import { PlaygroundScreen } from './screens/PlaygroundScreen';
 import './verification.css';
 import './graph.css';
 import './findings.css';
@@ -74,6 +75,8 @@ export function App() {
           <DependencyGraph scanId={scan?.id ?? null} projectName={scan?.archive_name || 'Current project'} findings={findings} />
         ) : section === 'verification' ? (
           <VerificationScreen currentScan={scan} baselineScan={baselineScan} onTriggerRescan={() => setUploadOpen(true)} />
+        ) : section === 'playground' ? (
+          <PlaygroundScreen />
         ) : (
           <section className="welcome-panel">
             <div className="eyebrow"><Activity size={14} /> FRONTEND FOUNDATION</div>
@@ -81,7 +84,6 @@ export function App() {
             <div className="foundation-card"><span className="card-icon"><Activity size={18} /></span><div><strong>Screen foundation is ready</strong><small>This screen will be completed in its scheduled sprint milestone.</small></div></div>
           </section>
         )}
-        {section === 'playground' && <footer className="page-footer"><span>KEYNOVA <i /> POST-QUANTUM READINESS</span><span>Local-first by design</span></footer>}
       </main>
       <UploadModal isOpen={uploadOpen} onClose={() => setUploadOpen(false)} projectId={PROJECT_ID} onScanCompleted={handleScanCompleted} />
     </div>
