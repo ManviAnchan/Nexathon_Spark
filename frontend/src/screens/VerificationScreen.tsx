@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { ArrowDown, ArrowRight, CheckCircle2, FileCode2, GitCompareArrows, RefreshCw, ShieldAlert, ShieldCheck, TrendingUp } from 'lucide-react';
+import { ArrowDown, ArrowRight, CheckCircle2, FileCode2, GitCompareArrows, RefreshCw, ShieldAlert, TrendingUp } from 'lucide-react';
 import { fetchScanDiff } from '../lib/api';
 import type { Finding, ScanComparison, ScanStatus } from '../types';
 
