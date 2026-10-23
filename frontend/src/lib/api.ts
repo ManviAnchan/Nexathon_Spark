@@ -30,3 +30,5 @@ export async function downloadScanExport(scanId: string, format: 'cbom' | 'pdf')
   link.remove();
   URL.revokeObjectURL(url);
 }
+
+export const suggestPqcMigration = (findingId: string) => request<import('../types').RemediationResponse>(`/findings/${encodeURIComponent(findingId)}/suggest-fix`, { method: 'POST' });

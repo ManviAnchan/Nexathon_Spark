@@ -2,6 +2,8 @@ import { useEffect, useState } from 'react';
 import { Activity, ArrowUpRight } from 'lucide-react';
 import { Sidebar, type WorkspaceSection } from './components/Sidebar';
 import { Dashboard } from './screens/Dashboard';
+import { FindingsExplorer } from './screens/FindingsExplorer';
+import './findings.css';
 import './dashboard.css';
 import { UploadModal } from './components/UploadModal';
 import { fetchFindings, fetchScan } from './lib/api';
@@ -20,6 +22,7 @@ export function App() {
   const [section, setSection] = useState<WorkspaceSection>('dashboard');
   const [scan, setScan] = useState<ScanStatus | null>(null);
   const [findings, setFindings] = useState<Finding[]>([]);
+  const [selectedFinding, setSelectedFinding] = useState<Finding | null>(null);
   const [uploadOpen, setUploadOpen] = useState(false);
   const [demoData, setDemoData] = useState(true);
   const active = sectionCopy[section];
@@ -57,7 +60,9 @@ export function App() {
           <div className="connection"><span className="live-dot" /> Local workspace <ArrowUpRight size={14} /></div>
         </header>
         {section === 'dashboard' ? (
-          <Dashboard scan={scan} findings={findings} isDemo={demoData} onOpenFinding={() => setSection('findings')} onNavigate={navigate} />
+          <Dashboard scan={scan} findings={findings} isDemo={demoData} onOpenFinding={finding => { setSelectedFinding(finding); setSection('findings'); }} onNavigate={navigate} />
+        ) : section === 'findings' ? (
+          <FindingsExplorer findings={findings} selectedFinding={selectedFinding} onSelectFinding={setSelectedFinding} onNavigate={navigate} />
         ) : (
           <section className="welcome-panel">
             <div className="eyebrow"><Activity size={14} /> FRONTEND FOUNDATION</div>
