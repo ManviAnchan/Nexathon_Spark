@@ -1,0 +1,5 @@
+cryptography>=43.0.0
+pqcrypto>=1.0.0
+fastapi>=0.115.0
+pydantic>=2.8.0
+liboqs-python>=0.10.0
