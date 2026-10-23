@@ -36,6 +36,15 @@ def suggest_finding_fix(finding_id: str, db: Any = Depends(get_db) if get_db els
         raise HTTPException(status_code=503, detail="Database service not initialized")
     finding = db.query(Finding).filter(Finding.id == finding_id).first()
     if not finding:
+        if finding_id.startswith("demo-"):
+            demo_map = {
+                "demo-rsa": {"id": finding_id, "algorithm": "RSA", "file_path": "backend/crypto_service.py", "line_start": 24, "code_snippet": "rsa.generate_private_key(public_exponent=65537, key_size=2048)", "usage": "key_generation", "severity": "critical"},
+                "demo-ecc": {"id": finding_id, "algorithm": "ECC-SECP256R1", "file_path": "backend/auth.py", "line_start": 41, "code_snippet": "ec.generate_private_key(ec.SECP256R1())", "usage": "token_signing", "severity": "high"},
+                "demo-md5": {"id": finding_id, "algorithm": "MD5", "file_path": "backend/hasher.py", "line_start": 17, "code_snippet": "hashlib.md5(password.encode()).hexdigest()", "usage": "password_hashing", "severity": "medium"},
+                "demo-dependency": {"id": finding_id, "algorithm": "Legacy crypto dependency", "file_path": "requirements.txt", "line_start": 3, "code_snippet": "pycryptodome==3.10.1", "usage": "dependency", "severity": "low"},
+            }
+            if finding_id in demo_map:
+                return generate_remediation(demo_map[finding_id])
         raise HTTPException(status_code=404, detail="Finding not found")
 
     finding_dict = {
