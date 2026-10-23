@@ -3,6 +3,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 
 from keynova.core.database import init_db, DB_TYPE
+from keynova.api.v1.projects import router as projects_router
+from keynova.api.v1.scans import router as scans_router
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -26,6 +28,10 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Mount API Routers
+app.include_router(projects_router, prefix="/api/v1/projects", tags=["Projects"])
+app.include_router(scans_router, prefix="/api/v1/scans", tags=["Scans"])
 
 @app.get("/health", tags=["Health"])
 def health_check():
