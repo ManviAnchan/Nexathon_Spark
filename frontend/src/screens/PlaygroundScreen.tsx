@@ -5,50 +5,19 @@ import {
   Play, 
   Copy, 
   Check, 
+  ShieldAlert, 
+  ShieldCheck, 
   AlertTriangle, 
+  ArrowRight, 
   Code2, 
+  Clock, 
+  Layers, 
   RefreshCw,
+  Zap,
   Info
 } from 'lucide-react';
-import { runBenchmark } from '../lib/api';
-import type { BenchmarkResult, RemediationResponse } from '../types';
-
-async function callRemediationApi(finding: any): Promise<RemediationResponse> {
-  const API_BASE = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000/api/v1';
-  try {
-    const res = await fetch(`${API_BASE}/remediation/remediate`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(finding)
-    });
-    if (res.ok) {
-      return await res.json();
-    }
-  } catch {
-    // fallback if backend is offline
-  }
-
-  // Fallback template for offline/standalone UI demo
-  const isRsa = finding.algorithm === 'RSA';
-  const isEcc = finding.algorithm.includes('EC');
-  return {
-    finding_id: finding.id || 'demo-finding',
-    provider: 'deterministic_fallback',
-    algorithm: finding.algorithm,
-    target_standard: isRsa ? 'FIPS 203 (ML-KEM-768)' : isEcc ? 'FIPS 204 (ML-DSA-65)' : 'RFC 9106 (Argon2id) / RFC 7914 (scrypt)',
-    explanation: isRsa 
-      ? 'This codebase uses 2048-bit RSA for public-key establishment. Under Shor’s algorithm, CRQC can factor 2048-bit integers in polynomial time. Migrate to NIST FIPS 203 ML-KEM-768.'
-      : isEcc
-      ? 'Elliptic curve signatures over SECP256R1 are vulnerable to discrete logarithm solving on quantum hardware. Migrate to NIST FIPS 204 ML-DSA-65.'
-      : 'Password storage requires memory-hard Key Derivation Functions (Argon2id or scrypt) to resist offline GPU brute-force attacks.',
-    proposed_diff: `--- ${finding.file_path}\n+++ ${finding.file_path}\n@@ -1,4 +1,4 @@\n- ${finding.code_snippet}\n+ # REMEDIATED with NIST PQC standard\n`,
-    warnings: [
-      'Advisory patch: Proposed diff is an automated engineering recommendation.',
-      'Requires human cryptographic review, protocol testing, and validation prior to production deployment.'
-    ],
-    migration_effort: 'medium'
-  };
-}
+import { runCryptoBenchmark, remediateFinding } from '../lib/api';
+import { BenchmarkResult, Remediation } from '../types';
 
 export const PlaygroundScreen: React.FC = () => {
   // Benchmark State
@@ -66,7 +35,7 @@ export const PlaygroundScreen: React.FC = () => {
       algorithm: 'RSA',
       file_path: 'backend/crypto_service.py',
       line_start: 9,
-      code_snippet: 'self.private_key = legacy_rsa.generate_private_key(public_exponent=65537, key_size=2048)',
+      code_snippet: 'self.private_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)',
       usage: 'key_generation',
       severity: 'critical' as const,
       asset_type: 'source_code'
@@ -108,11 +77,12 @@ export const PlaygroundScreen: React.FC = () => {
   ];
 
   const [selectedFinding, setSelectedFinding] = useState(sampleFindings[0]);
-  const [remediation, setRemediation] = useState<RemediationResponse | null>(null);
-  const [, setIsRemediating] = useState(false);
+  const [remediation, setRemediation] = useState<Remediation | null>(null);
+  const [isRemediating, setIsRemediating] = useState(false);
   const [remediateError, setRemediateError] = useState<string | null>(null);
   const [copiedDiff, setCopiedDiff] = useState(false);
 
+  // Run initial benchmark on mount
   useEffect(() => {
     handleRunBenchmark('ML-KEM-768', 10);
     handleGenerateRemediation(sampleFindings[0]);
@@ -122,7 +92,7 @@ export const PlaygroundScreen: React.FC = () => {
     setIsBenchmarking(true);
     setBenchError(null);
     try {
-      const res = await runBenchmark(alg, iters);
+      const res = await runCryptoBenchmark(alg, iters);
       setBenchmarkResult(res);
     } catch (err: any) {
       setBenchError(err.message || 'Benchmark failed to execute');
@@ -135,7 +105,7 @@ export const PlaygroundScreen: React.FC = () => {
     setIsRemediating(true);
     setRemediateError(null);
     try {
-      const res = await callRemediationApi({
+      const res = await remediateFinding({
         id: finding.id,
         algorithm: finding.algorithm,
         file_path: finding.file_path,
@@ -144,7 +114,7 @@ export const PlaygroundScreen: React.FC = () => {
         usage: finding.usage,
         severity: finding.severity,
         asset_type: finding.asset_type,
-        library: (finding as any).library
+        library: finding.library
       });
       setRemediation(res);
     } catch (err: any) {
@@ -171,13 +141,13 @@ export const PlaygroundScreen: React.FC = () => {
   return (
     <div className="p-8 space-y-6 max-w-6xl mx-auto h-full flex flex-col">
       {/* Header */}
-      <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 bg-zinc-900 border border-zinc-800 p-5 rounded-xl shadow-lg">
+      <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 enterprise-card p-5 rounded-xl">
         <div>
           <div className="flex items-center gap-1.5 text-xs font-semibold text-emerald-400">
             <Sparkles className="w-3.5 h-3.5" />
             <span>AI Remediation & Quantum-Resilience Lab</span>
           </div>
-          <h1 className="text-xl font-bold text-zinc-100 font-sans mt-1">
+          <h1 className="text-xl font-bold text-zinc-100 font-['Outfit'] mt-1">
             PQC Playground & Automated Migration Engine
           </h1>
           <p className="text-xs text-zinc-400 mt-0.5">
@@ -189,11 +159,11 @@ export const PlaygroundScreen: React.FC = () => {
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
         {/* Left Column: PQC Live Benchmarking Lab */}
         <div className="lg:col-span-5 space-y-4">
-          <div className="bg-zinc-900 border border-zinc-800 p-5 rounded-xl space-y-4 shadow-lg">
+          <div className="enterprise-card p-5 rounded-xl space-y-4">
             <div className="flex items-center justify-between border-b border-zinc-800 pb-3">
               <div className="flex items-center gap-2">
                 <Cpu className="w-4 h-4 text-emerald-400" />
-                <h2 className="text-sm font-bold text-zinc-100 font-sans">
+                <h2 className="text-sm font-bold text-zinc-100 font-['Outfit']">
                   Live Cryptographic Benchmark
                 </h2>
               </div>
@@ -346,11 +316,11 @@ export const PlaygroundScreen: React.FC = () => {
 
         {/* Right Column: AI Remediation & Unified Diff Engine */}
         <div className="lg:col-span-7 space-y-4">
-          <div className="bg-zinc-900 border border-zinc-800 p-5 rounded-xl space-y-4 shadow-lg">
+          <div className="enterprise-card p-5 rounded-xl space-y-4">
             <div className="flex items-center justify-between border-b border-zinc-800 pb-3">
               <div className="flex items-center gap-2">
                 <Sparkles className="w-4 h-4 text-emerald-400" />
-                <h2 className="text-sm font-bold text-zinc-100 font-sans">
+                <h2 className="text-sm font-bold text-zinc-100 font-['Outfit']">
                   AI Cryptographic Remediation Engine
                 </h2>
               </div>

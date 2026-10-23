@@ -1,21 +1,122 @@
-import { useState } from 'react';
-import { Activity, Beaker, ChevronLeft, ChevronRight, GitCompareArrows, LayoutDashboard, Network, ShieldAlert, ShieldCheck } from 'lucide-react';
+import React from 'react';
+import { 
+  Activity, 
+  ArrowUpRight, 
+  GitCompare, 
+  LayoutDashboard, 
+  LogOut, 
+  Moon, 
+  Network, 
+  ShieldAlert, 
+  Sparkles,
+  Sun, 
+  Upload, 
+  WifiOff 
+} from 'lucide-react';
+import { BrandMark } from './BrandMark';
 
-export type WorkspaceSection = 'dashboard' | 'findings' | 'graph' | 'verification' | 'playground';
-interface SidebarProps { activeSection: WorkspaceSection; onNavigate: (section: WorkspaceSection) => void; }
-const navigation: Array<{ id: WorkspaceSection; label: string; icon: typeof LayoutDashboard }> = [
-  { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
-  { id: 'findings', label: 'Findings Explorer', icon: ShieldAlert },
-  { id: 'graph', label: 'Cryptographic Graph', icon: Network },
-  { id: 'verification', label: 'Verification', icon: GitCompareArrows },
-  { id: 'playground', label: 'PQC Playground', icon: Beaker },
-];
-export function Sidebar({ activeSection, onNavigate }: SidebarProps) {
-  const [collapsed, setCollapsed] = useState(false);
-  return <aside className={`sidebar${collapsed ? ' collapsed' : ''}`}>
-    <div className="sidebar-brand"><span className="brand-icon"><Activity size={18} /></span>{!collapsed && <span><strong>KEYNOVA</strong><small>QUANTUM READINESS</small></span>}</div>
-    <div className="sidebar-label">{!collapsed && 'WORKSPACE'}</div>
-    <nav aria-label="Workspace navigation">{navigation.map(({ id, label, icon: Icon }) => <button key={id} type="button" className={`nav-item${activeSection === id ? ' active' : ''}`} onClick={() => onNavigate(id)} title={collapsed ? label : undefined} aria-current={activeSection === id ? 'page' : undefined}><Icon size={17} strokeWidth={1.8} />{!collapsed && <span>{label}</span>}</button>)}</nav>
-    <div className="sidebar-bottom"><div className="security-badge"><span className="security-icon"><ShieldCheck size={16} /></span>{!collapsed && <span><strong>Air-Gapped Analyst</strong><small>LOCAL PROCESSING ACTIVE</small></span>}</div><button type="button" className="collapse-button" onClick={() => setCollapsed(value => !value)} aria-label={collapsed ? 'Expand navigation' : 'Collapse navigation'}>{collapsed ? <ChevronRight size={16} /> : <ChevronLeft size={16} />}{!collapsed && 'Collapse'}</button></div>
-  </aside>;
+interface SidebarProps {
+  activeScreen: string; 
+  setActiveScreen: (screen: string) => void; 
+  openUploadModal: () => void;
+  openTrustModal: () => void; 
+  currentScanId: string | null; 
+  projectName: string;
+  user: { name: string; role: string; airGapped: boolean }; 
+  onLogout: () => void;
+  theme: 'light' | 'dark'; 
+  onToggleTheme: () => void;
 }
+
+export const Sidebar: React.FC<SidebarProps> = ({ 
+  activeScreen, 
+  setActiveScreen, 
+  openUploadModal, 
+  openTrustModal, 
+  currentScanId, 
+  projectName, 
+  user, 
+  onLogout, 
+  theme, 
+  onToggleTheme 
+}) => {
+  const items = [
+    { id: 'dashboard', label: 'Overview', icon: LayoutDashboard },
+    { id: 'findings', label: 'Findings', icon: ShieldAlert },
+    { id: 'graph', label: 'Architecture', icon: Network },
+    { id: 'verification', label: 'Verification', icon: GitCompare },
+    { id: 'playground', label: 'Playground', icon: Sparkles },
+  ];
+
+  return (
+    <header className="workspace-header">
+      <button className="brand-lockup" onClick={() => setActiveScreen('dashboard')} aria-label="Keynova home">
+        <span className="brand-mark"><BrandMark size={21}/></span>
+        <span><b>KEYNOVA</b><small>QUANTUM READINESS</small></span>
+      </button>
+
+      <div className="header-project">
+        <span className="project-status-dot"/>
+        <div>
+          <small>WORKSPACE</small>
+          <strong>{projectName || 'Payment Core'}</strong>
+        </div>
+        <ArrowUpRight size={14}/>
+      </div>
+
+      <nav className="workspace-nav" aria-label="Main navigation">
+        {items.map(({ id, label, icon: Icon }) => (
+          <button 
+            key={id} 
+            aria-label={label} 
+            title={label} 
+            className={activeScreen === id ? 'active' : ''} 
+            onClick={() => setActiveScreen(id)}
+          >
+            <Icon size={16}/>
+            <span>{label}</span>
+          </button>
+        ))}
+      </nav>
+
+      <div className="header-actions">
+        <button 
+          className="quiet-icon-button theme-toggle" 
+          onClick={onToggleTheme} 
+          title={`Switch to ${theme === 'light' ? 'dark' : 'light'} mode`} 
+          aria-label={`Switch to ${theme === 'light' ? 'dark' : 'light'} mode`}
+        >
+          {theme === 'light' ? <Moon size={16}/> : <Sun size={16}/>}
+        </button>
+
+        <button 
+          className="quiet-icon-button" 
+          onClick={openTrustModal} 
+          title="Air-gap status"
+        >
+          <WifiOff size={16}/>
+        </button>
+
+        <button 
+          className="scan-button" 
+          onClick={openUploadModal}
+        >
+          <Upload size={15}/> New scan
+        </button>
+
+        <div className="profile-chip">
+          <span className="profile-avatar">{user.name.slice(0, 1).toUpperCase()}</span>
+          <span className="profile-name">{user.name}</span>
+          <button onClick={onLogout} title="Sign out">
+            <LogOut size={15}/>
+          </button>
+        </div>
+      </div>
+
+      <div className="header-scan-indicator">
+        <Activity size={13}/>
+        {currentScanId ? 'Scan connected' : 'No scan'}
+      </div>
+    </header>
+  );
+};
