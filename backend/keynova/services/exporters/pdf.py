@@ -55,7 +55,7 @@ class ReportNumberedCanvas(canvas.Canvas):
 
     def showPage(self):
         self._saved_page_states.append(dict(self.__dict__))
-        self._startPage()
+        getattr(self, "_startPage")()
 
     def save(self):
         num_pages = len(self._saved_page_states)
@@ -70,8 +70,10 @@ class ReportNumberedCanvas(canvas.Canvas):
         self.setFont("Helvetica-Bold", 7.5)
         self.setFillColor(colors.HexColor("#64748b"))
 
+        page_num = getattr(self, "_pageNumber", 1)
+
         # Running Header (pages 2+)
-        if self._pageNumber > 1:
+        if page_num > 1:
             self.drawString(40, letter[1] - 30, "KEYNOVA EXECUTIVE POST-QUANTUM READINESS REPORT")
             self.drawRightString(letter[0] - 40, letter[1] - 30, "CONFIDENTIAL CRYPTOGRAPHIC AUDIT")
             self.setStrokeColor(colors.HexColor("#cbd5e1"))
@@ -84,7 +86,7 @@ class ReportNumberedCanvas(canvas.Canvas):
         self.line(40, 36, letter[0] - 40, 36)
         self.setFont("Helvetica", 7.5)
         self.drawString(40, 24, "KEYNOVA — Autonomous Post-Quantum Migration Platform")
-        self.drawRightString(letter[0] - 40, 24, f"Page {self._pageNumber} of {total_pages}")
+        self.drawRightString(letter[0] - 40, 24, f"Page {page_num} of {total_pages}")
         self.restoreState()
 
 
@@ -225,8 +227,7 @@ def generate_pdf_report(
     if findings is None:
         findings = []
 
-    p_name_str = str(project_name).strip() if project_name is not None else ""
-    clean_project_name = p_name_str if p_name_str else "Cryptographic Service"
+    clean_project_name = project_name.strip() if project_name and project_name.strip() else "Cryptographic Service"
     scan_id = str(scan_meta.get("id") or "").strip()
     if not scan_id:
         scan_id = "SCAN-LOCAL-01"
