@@ -8,11 +8,19 @@ class TokenAuthService:
         self.verifying_key = self.signing_key.public_key()
 
     def sign_auth_jwt(self, claims_hash: bytes) -> bytes:
-        return self.signing_key.sign(claims_hash, ec.ECDSA(hashes.SHA256()))
+        signature = self.signing_key.sign(
+            claims_hash,
+            ec.ECDSA(hashes.SHA256())
+        )
+        return signature
 
     def verify_auth_jwt(self, claims_hash: bytes, signature: bytes) -> bool:
         try:
-            self.verifying_key.verify(signature, claims_hash, ec.ECDSA(hashes.SHA256()))
+            self.verifying_key.verify(
+                signature,
+                claims_hash,
+                ec.ECDSA(hashes.SHA256())
+            )
             return True
         except Exception:
             return False
