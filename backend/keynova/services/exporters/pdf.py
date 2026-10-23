@@ -25,79 +25,67 @@ BACKEND_DIR = Path(__file__).resolve().parent.parent.parent.parent
 if str(BACKEND_DIR) not in sys.path:
     sys.path.insert(0, str(BACKEND_DIR))
 
-try:
-    from reportlab.lib.pagesizes import letter
-    from reportlab.lib import colors
-    from reportlab.platypus import (
-        SimpleDocTemplate,
-        Paragraph,
-        Spacer,
-        Table,
-        TableStyle,
-        HRFlowable,
-        KeepTogether,
-        PageBreak,
-    )
-    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-    from reportlab.pdfgen import canvas
-    REPORTLAB_AVAILABLE = True
-except (ImportError, ModuleNotFoundError):
-    REPORTLAB_AVAILABLE = False
-    letter = (612.0, 792.0)
-    colors = None
-    SimpleDocTemplate = Paragraph = Spacer = Table = TableStyle = HRFlowable = KeepTogether = PageBreak = None
-    getSampleStyleSheet = ParagraphStyle = None
-    canvas = None
+from reportlab.lib.pagesizes import letter
+from reportlab.lib import colors
+from reportlab.platypus import (
+    SimpleDocTemplate,
+    Paragraph,
+    Spacer,
+    Table,
+    TableStyle,
+    HRFlowable,
+    KeepTogether,
+    PageBreak,
+)
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.pdfgen import canvas
+
+REPORTLAB_AVAILABLE = True
 
 
-if REPORTLAB_AVAILABLE:
-    class ReportNumberedCanvas(canvas.Canvas):
-        """
-        Two-pass canvas that dynamically calculates the total page count
-        and renders consistent running headers and footers across all pages.
-        """
+class ReportNumberedCanvas(canvas.Canvas):
+    """
+    Two-pass canvas that dynamically calculates the total page count
+    and renders consistent running headers and footers across all pages.
+    """
 
-        def __init__(self, *args, **kwargs):
-            super(ReportNumberedCanvas, self).__init__(*args, **kwargs)
-            self._saved_page_states = []
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._saved_page_states = []
 
-        def showPage(self):
-            self._saved_page_states.append(dict(self.__dict__))
-            self._startPage()
+    def showPage(self):
+        self._saved_page_states.append(dict(self.__dict__))
+        self._startPage()
 
-        def save(self):
-            num_pages = len(self._saved_page_states)
-            for state in self._saved_page_states:
-                self.__dict__.update(state)
-                self.draw_decorations(num_pages)
-                canvas.Canvas.showPage(self)
-            canvas.Canvas.save(self)
+    def save(self):
+        num_pages = len(self._saved_page_states)
+        for state in self._saved_page_states:
+            self.__dict__.update(state)
+            self.draw_decorations(num_pages)
+            canvas.Canvas.showPage(self)
+        canvas.Canvas.save(self)
 
-        def draw_decorations(self, total_pages: int):
-            self.saveState()
-            self.setFont("Helvetica-Bold", 7.5)
-            self.setFillColor(colors.HexColor("#64748b"))
+    def draw_decorations(self, total_pages: int):
+        self.saveState()
+        self.setFont("Helvetica-Bold", 7.5)
+        self.setFillColor(colors.HexColor("#64748b"))
 
-            # Running Header (pages 2+)
-            if self._pageNumber > 1:
-                self.drawString(40, letter[1] - 30, "KEYNOVA EXECUTIVE POST-QUANTUM READINESS REPORT")
-                self.drawRightString(letter[0] - 40, letter[1] - 30, "CONFIDENTIAL CRYPTOGRAPHIC AUDIT")
-                self.setStrokeColor(colors.HexColor("#cbd5e1"))
-                self.setLineWidth(0.5)
-                self.line(40, letter[1] - 34, letter[0] - 40, letter[1] - 34)
-
-            # Running Footer (all pages)
+        # Running Header (pages 2+)
+        if self._pageNumber > 1:
+            self.drawString(40, letter[1] - 30, "KEYNOVA EXECUTIVE POST-QUANTUM READINESS REPORT")
+            self.drawRightString(letter[0] - 40, letter[1] - 30, "CONFIDENTIAL CRYPTOGRAPHIC AUDIT")
             self.setStrokeColor(colors.HexColor("#cbd5e1"))
             self.setLineWidth(0.5)
-            self.line(40, 36, letter[0] - 40, 36)
-            self.setFont("Helvetica", 7.5)
-            self.drawString(40, 24, "KEYNOVA — Autonomous Post-Quantum Migration Platform")
-            self.drawRightString(letter[0] - 40, 24, f"Page {self._pageNumber} of {total_pages}")
-            self.restoreState()
-else:
-    class ReportNumberedCanvas:
-        def __init__(self, *args, **kwargs):
-            pass
+            self.line(40, letter[1] - 34, letter[0] - 40, letter[1] - 34)
+
+        # Running Footer (all pages)
+        self.setStrokeColor(colors.HexColor("#cbd5e1"))
+        self.setLineWidth(0.5)
+        self.line(40, 36, letter[0] - 40, 36)
+        self.setFont("Helvetica", 7.5)
+        self.drawString(40, 24, "KEYNOVA — Autonomous Post-Quantum Migration Platform")
+        self.drawRightString(letter[0] - 40, 24, f"Page {self._pageNumber} of {total_pages}")
+        self.restoreState()
 
 
 def _escape(val: Any, default: str = "") -> str:
@@ -237,7 +225,8 @@ def generate_pdf_report(
     if findings is None:
         findings = []
 
-    clean_project_name = str(project_name).strip() if project_name and str(project_name).strip() else "Cryptographic Service"
+    p_name_str = str(project_name).strip() if project_name is not None else ""
+    clean_project_name = p_name_str if p_name_str else "Cryptographic Service"
     scan_id = str(scan_meta.get("id") or "").strip()
     if not scan_id:
         scan_id = "SCAN-LOCAL-01"
@@ -323,7 +312,7 @@ def generate_pdf_report(
     raw_score = scan_meta.get("readiness_score")
     if raw_score is not None:
         try:
-            score = max(0, min(100, int(round(float(raw_score)))))
+            score = max(0, min(100, round(float(raw_score))))
             score_display = f"{score} / 100"
             if score < 50:
                 score_color = "#dc2626"
@@ -735,7 +724,7 @@ def generate_pdf_report(
 
     # Table ColWidths: 110 + 85 + 55 + 42 + 120 + 120 = 532
     t_findings = Table(findings_rows, colWidths=[110, 85, 55, 42, 120, 120], repeatRows=1)
-    table_styles = [
+    table_styles: List[Any] = [
         ('BACKGROUND', (0, 0), (-1, 0), c_primary),
         ('GRID', (0, 0), (-1, -1), 0.5, c_border),
         ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, c_card_bg]),
@@ -784,5 +773,6 @@ def generate_pdf_report(
     story.append(t_limitations)
 
     # Build PDF with dynamic page numbering
-    doc.build(story, canvasmaker=ReportNumberedCanvas)
+    canvasmaker: Any = ReportNumberedCanvas
+    doc.build(story, canvasmaker=canvasmaker)
     return buffer.getvalue()
