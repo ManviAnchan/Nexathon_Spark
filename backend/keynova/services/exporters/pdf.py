@@ -443,8 +443,7 @@ def generate_pdf_report(
             fontSize=9,
             leading=12,
             alignment=1,
-            textColor=colors.HexColor('#64748b'),
-            spaceAfter=4
+            textColor=colors.HexColor('#64748b')
         )
     )
     p_gauge_score = Paragraph(
@@ -453,11 +452,10 @@ def generate_pdf_report(
             'ScoreDisplay',
             parent=styles['Normal'],
             fontName='Helvetica-Bold',
-            fontSize=38,
-            leading=44,
+            fontSize=36,
+            leading=40,
             alignment=1,
-            textColor=colors.HexColor(score_color),
-            spaceAfter=4
+            textColor=colors.HexColor(score_color)
         )
     )
     p_gauge_badge = Paragraph(
@@ -469,32 +467,36 @@ def generate_pdf_report(
             fontSize=11,
             leading=14,
             alignment=1,
-            textColor=colors.HexColor(score_color),
-            spaceAfter=6
+            textColor=colors.HexColor(score_color)
         )
     )
+    p_gauge_details = Paragraph(
+        f"<b>Executive Posture:</b> {score_interpretation}<br/><br/>"
+        f"<b>Active HNDL Exposures:</b> <font color='{c_danger.hexval()}'><b>{hndl_count}</b></font> | "
+        f"<b>Audit Coverage:</b> {coverage_str} ({files_str} files scanned)",
+        body_style
+    )
 
-    # Large visual Readiness Index score gauge and risk tier badge
+    # Large visual Readiness Index score gauge and risk tier badge across distinct rows
     gauge_table_data = [
-        [
-            [p_gauge_title, p_gauge_score, p_gauge_badge]
-        ],
-        [
-            Paragraph(
-                f"<b>Executive Posture:</b> {score_interpretation}<br/><br/>"
-                f"<b>Active HNDL Exposures:</b> <font color='{c_danger.hexval()}'><b>{hndl_count}</b></font> | "
-                f"<b>Audit Coverage:</b> {coverage_str} ({files_str} files scanned)",
-                body_style
-            )
-        ]
+        [p_gauge_title],
+        [p_gauge_score],
+        [p_gauge_badge],
+        [p_gauge_details]
     ]
     t_cover_gauge = Table(gauge_table_data, colWidths=[532])
     t_cover_gauge.setStyle(TableStyle([
         ('BACKGROUND', (0, 0), (-1, -1), colors.HexColor("#f8fafc")),
         ('BOX', (0, 0), (-1, -1), 1.5, colors.HexColor(score_color)),
-        ('LINEBELOW', (0, 0), (-1, 0), 0.5, c_border),
-        ('PADDING', (0, 0), (-1, -1), 14),
-        ('ALIGN', (0, 0), (-1, 0), 'CENTER'),
+        ('LINEBELOW', (0, 2), (-1, 2), 0.5, c_border),
+        ('ALIGN', (0, 0), (-1, 2), 'CENTER'),
+        ('TOPPADDING', (0, 0), (-1, 0), 16),
+        ('BOTTOMPADDING', (0, 0), (-1, 0), 6),
+        ('TOPPADDING', (0, 1), (-1, 1), 4),
+        ('BOTTOMPADDING', (0, 1), (-1, 1), 8),
+        ('TOPPADDING', (0, 2), (-1, 2), 4),
+        ('BOTTOMPADDING', (0, 2), (-1, 2), 16),
+        ('PADDING', (0, 3), (-1, 3), 12),
     ]))
     story.append(t_cover_gauge)
     story.append(Spacer(1, 24))
