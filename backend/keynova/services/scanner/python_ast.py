@@ -60,8 +60,28 @@ class AstCryptoFinding:
             "hndl": self.hndl,
             "confidence": self.confidence,
             "rule_id": self.rule_id,
-            "evidence": self.evidence
+            "evidence": self.evidence,
         }
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> "AstCryptoFinding":
+        return cls(
+            file_path=data.get("file_path", ""),
+            line_start=data.get("line_start", 1),
+            line_end=data.get("line_end", 1),
+            code_snippet=data.get("code_snippet", ""),
+            asset_type=data.get("asset_type", "source_code"),
+            algorithm=data.get("algorithm", "Unknown"),
+            usage=data.get("usage", "encryption"),
+            library=data.get("library", ""),
+            key_size=data.get("key_size", 0),
+            severity=data.get("severity", "low"),
+            quantum_status=data.get("quantum_status", "quantum_vulnerable"),
+            hndl=data.get("hndl", False),
+            confidence=data.get("confidence", 1.0),
+            rule_id=data.get("rule_id", "UNKNOWN"),
+            evidence=data.get("evidence", "")
+        )
 
 class CryptoAstVisitor(ast.NodeVisitor):
     def __init__(self, file_path: str, source_code: str):
@@ -203,14 +223,38 @@ class CryptoAstVisitor(ast.NodeVisitor):
 
         self.generic_visit(node)
 
-def scan_python_file(file_path: Path, relative_to: Path) -> List[AstCryptoFinding]:
-    """Parses a Python file using AST and returns crypto findings."""
+def scan_python_file(file_path: Path, relative_to: Path, use_cache: bool = True) -> List[AstCryptoFinding]:
+    """Parses a Python file using AST and returns crypto findings with content-addressable caching."""
     rel_path = str(file_path.relative_to(relative_to))
     try:
         content = file_path.read_text(encoding="utf-8")
+        if use_cache:
+            try:
+                from keynova.services.cache.ast_cache import get_ast_cache
+                cache = get_ast_cache()
+                cached_data = cache.get(content)
+                if cached_data is not None:
+                    findings = []
+                    for item in cached_data:
+                        d = dict(item)
+                        d["file_path"] = rel_path
+                        findings.append(AstCryptoFinding.from_dict(d))
+                    return findings
+            except Exception:
+                pass
+
         tree = ast.parse(content, filename=str(file_path))
         visitor = CryptoAstVisitor(rel_path, content)
         visitor.visit(tree)
+
+        if use_cache:
+            try:
+                from keynova.services.cache.ast_cache import get_ast_cache
+                cache = get_ast_cache()
+                cache.set(content, [f.to_dict() for f in visitor.findings], file_path=rel_path)
+            except Exception:
+                pass
+
         return visitor.findings
     except SyntaxError:
         return []

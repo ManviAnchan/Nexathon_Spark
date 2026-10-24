@@ -1,5 +1,15 @@
-import React, { useEffect, useState } from 'react';
-import { Network, ZoomIn, ZoomOut, Maximize2, FileCode2, Layers, Cpu, ShieldAlert } from 'lucide-react';
+import React, { useEffect, useMemo, useState } from 'react';
+import {
+  Cpu,
+  FileCode2,
+  Layers,
+  Maximize2,
+  Network,
+  ShieldAlert,
+  ShieldCheck,
+  ZoomIn,
+  ZoomOut,
+} from 'lucide-react';
 import { GraphData } from '../types';
 import { fetchCryptoGraph } from '../lib/api';
 
@@ -8,201 +18,312 @@ interface DependencyGraphProps {
   projectName: string;
 }
 
-export const DependencyGraph: React.FC<DependencyGraphProps> = ({
-  scanId,
-  projectName
-}) => {
+interface PositionedNode {
+  id: string;
+  type: string;
+  data: {
+    label?: string;
+    severity?: string;
+    hndl?: boolean;
+    full_path?: string;
+    kind?: string;
+    usage?: string;
+    subtitle?: string;
+    [key: string]: any;
+  };
+  position: { x: number; y: number };
+  layoutX: number;
+  layoutY: number;
+  width: number;
+  height: number;
+}
+
+export const DependencyGraph: React.FC<DependencyGraphProps> = ({ scanId, projectName }) => {
   const [graphData, setGraphData] = useState<GraphData | null>(null);
   const [zoom, setZoom] = useState(1);
-  const [selectedNode, setSelectedNode] = useState<{ label: string; type: string; info: string } | null>(null);
+  const [selectedNode, setSelectedNode] = useState<PositionedNode | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    async function loadGraph() {
-      if (!scanId) return;
-      try {
-        const data = await fetchCryptoGraph(scanId);
-        setGraphData(data);
-      } catch (e) {
-        console.error(e);
-      }
-    }
-    loadGraph();
+    let cancelled = false;
+    setGraphData(null);
+    setError(null);
+    if (!scanId) return;
+    fetchCryptoGraph(scanId)
+      .then((data) => {
+        if (!cancelled) setGraphData(data);
+      })
+      .catch((reason: unknown) => {
+        if (!cancelled) setError(reason instanceof Error ? reason.message : 'Graph could not be loaded.');
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [scanId]);
+
+  // Compute clean hierarchical column layout: Application (0) -> Files (1) -> Libraries (2) -> Algorithms (3)
+  const { positionedNodes, nodesById, canvasHeight } = useMemo(() => {
+    const rawNodes = graphData?.nodes || [];
+    if (!rawNodes.length) {
+      return { positionedNodes: [], nodesById: new Map<string, PositionedNode>(), canvasHeight: 460 };
+    }
+
+    const appNodes: GraphData['nodes'][number][] = [];
+    const fileNodes: GraphData['nodes'][number][] = [];
+    const libNodes: GraphData['nodes'][number][] = [];
+    const algNodes: GraphData['nodes'][number][] = [];
+
+    for (const node of rawNodes) {
+      if (node.type === 'application') appNodes.push(node);
+      else if (node.type === 'file') fileNodes.push(node);
+      else if (node.type === 'library') libNodes.push(node);
+      else algNodes.push(node);
+    }
+
+    const maxCount = Math.max(1, appNodes.length, fileNodes.length, libNodes.length, algNodes.length);
+    const rowHeight = 92;
+    const computedHeight = Math.max(480, maxCount * rowHeight + 100);
+
+    const layoutColumn = (items: GraphData['nodes'][number][], x: number, width: number, height: number): PositionedNode[] => {
+      const totalColHeight = items.length * rowHeight;
+      const startY = Math.max(40, (computedHeight - totalColHeight) / 2);
+      return items.map((item, idx) => ({
+        ...item,
+        layoutX: x,
+        layoutY: startY + idx * rowHeight,
+        width,
+        height,
+      }));
+    };
+
+    const pApps = layoutColumn(appNodes, 40, 200, 68);
+    const pFiles = layoutColumn(fileNodes, 310, 210, 64);
+    const pLibs = layoutColumn(libNodes, 590, 190, 64);
+    const pAlgs = layoutColumn(algNodes, 860, 240, 72);
+
+    const allPositioned = [...pApps, ...pFiles, ...pLibs, ...pAlgs];
+    const map = new Map<string, PositionedNode>(allPositioned.map((n) => [n.id, n]));
+
+    return { positionedNodes: allPositioned, nodesById: map, canvasHeight: computedHeight };
+  }, [graphData]);
 
   return (
     <div className="p-6 md:p-8 space-y-5 max-w-7xl mx-auto h-full flex flex-col">
-      {/* Header */}
-      <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 p-5 rounded-2xl bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 shadow-sm">
+      <header className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 p-5 rounded-xl bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 shadow-sm">
         <div>
-          <div className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-blue-600 dark:text-blue-400">
-            <Network className="w-3.5 h-3.5" />
-            <span>Architecture Visualizer</span>
+          <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-zinc-500 dark:text-zinc-400">
+            <Network className="w-4 h-4 text-blue-500" /> Architecture
           </div>
-          <h1 className="text-xl font-bold text-zinc-900 dark:text-zinc-100 font-['Outfit'] mt-1">
-            Cryptographic Dependency Graph
-          </h1>
-          <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-0.5">
-            Topology mapping Application &rarr; Source Files &rarr; Libraries &rarr; Cryptographic Primitives.
-          </p>
+          <h1 className="text-xl font-semibold text-zinc-900 dark:text-zinc-100 mt-1">Cryptographic dependency graph</h1>
+          <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-1">{projectName || 'Active Codebase'}</p>
         </div>
-
-        {/* Zoom controls */}
-        <div className="flex items-center gap-1 bg-zinc-100 dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 p-1 rounded-xl text-xs">
+        <div className="flex items-center gap-1 bg-zinc-100 dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 p-1 rounded-lg text-xs">
           <button
-            onClick={() => setZoom(z => Math.max(0.6, z - 0.1))}
-            className="p-1.5 rounded-lg text-zinc-500 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100 hover:bg-white dark:hover:bg-zinc-800 transition-colors"
-            title="Zoom Out"
+            disabled={!scanId || !graphData}
+            onClick={() => setZoom((value) => Math.max(0.6, value - 0.1))}
+            className="p-1.5 rounded text-zinc-500 hover:bg-white dark:hover:bg-zinc-800 disabled:opacity-40 disabled:cursor-not-allowed"
+            title="Zoom out"
           >
             <ZoomOut className="w-4 h-4" />
           </button>
-          <span className="text-xs font-mono text-zinc-700 dark:text-zinc-300 px-2 font-semibold">{Math.round(zoom * 100)}%</span>
+          <span className="px-2 font-mono text-zinc-700 dark:text-zinc-300">{Math.round(zoom * 100)}%</span>
           <button
-            onClick={() => setZoom(z => Math.min(1.5, z + 0.1))}
-            className="p-1.5 rounded-lg text-zinc-500 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100 hover:bg-white dark:hover:bg-zinc-800 transition-colors"
-            title="Zoom In"
+            disabled={!scanId || !graphData}
+            onClick={() => setZoom((value) => Math.min(1.5, value + 0.1))}
+            className="p-1.5 rounded text-zinc-500 hover:bg-white dark:hover:bg-zinc-800 disabled:opacity-40 disabled:cursor-not-allowed"
+            title="Zoom in"
           >
             <ZoomIn className="w-4 h-4" />
           </button>
           <button
+            disabled={!scanId || !graphData}
             onClick={() => setZoom(1)}
-            className="p-1.5 rounded-lg text-zinc-500 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100 hover:bg-white dark:hover:bg-zinc-800 transition-colors"
-            title="Reset"
+            className="p-1.5 rounded text-zinc-500 hover:bg-white dark:hover:bg-zinc-800 disabled:opacity-40 disabled:cursor-not-allowed"
+            title="Reset zoom"
           >
             <Maximize2 className="w-4 h-4" />
           </button>
         </div>
-      </div>
+      </header>
 
-      {/* Main Canvas */}
-      <div className="flex-1 rounded-2xl p-6 min-h-[520px] relative overflow-hidden flex items-center justify-center bg-zinc-50 dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 shadow-inner">
-        <div 
-          className="relative w-full h-full min-h-[480px] transition-transform duration-150"
-          style={{ transform: `scale(${zoom})`, transformOrigin: 'center center' }}
-        >
-          {/* Level Headers */}
-          <div className="absolute top-2 left-6 text-[10px] font-mono font-bold tracking-wider uppercase text-zinc-400 dark:text-zinc-500">01. Service Boundary</div>
-          <div className="absolute top-2 left-[280px] text-[10px] font-mono font-bold tracking-wider uppercase text-zinc-400 dark:text-zinc-500">02. Source Files</div>
-          <div className="absolute top-2 left-[540px] text-[10px] font-mono font-bold tracking-wider uppercase text-zinc-400 dark:text-zinc-500">03. Libraries</div>
-          <div className="absolute top-2 left-[780px] text-[10px] font-mono font-bold tracking-wider uppercase text-zinc-400 dark:text-zinc-500">04. Algorithms</div>
-
-          {/* SVG Connection Lines */}
-          <svg className="absolute inset-0 w-full h-full pointer-events-none">
-            <path d="M 170 200 C 230 200, 230 80, 280 80" stroke="#94a3b8" strokeWidth="1.5" fill="none" strokeDasharray="3 3" />
-            <path d="M 170 200 C 230 200, 230 180, 280 180" stroke="#94a3b8" strokeWidth="1.5" fill="none" strokeDasharray="3 3" />
-            <path d="M 170 200 C 230 200, 230 280, 280 280" stroke="#94a3b8" strokeWidth="1.5" fill="none" strokeDasharray="3 3" />
-            <path d="M 170 200 C 230 200, 230 380, 280 380" stroke="#94a3b8" strokeWidth="1.5" fill="none" strokeDasharray="3 3" />
-
-            <path d="M 440 80 C 490 80, 490 120, 540 120" stroke="#64748b" strokeWidth="1.5" fill="none" />
-            <path d="M 440 180 C 490 180, 490 120, 540 120" stroke="#64748b" strokeWidth="1.5" fill="none" />
-            <path d="M 440 280 C 490 280, 490 280, 540 280" stroke="#64748b" strokeWidth="1.5" fill="none" />
-            <path d="M 440 380 C 490 380, 490 380, 540 380" stroke="#64748b" strokeWidth="1.5" fill="none" />
-
-            <path d="M 680 120 C 730 120, 730 80, 780 80" stroke="#ef4444" strokeWidth="1.5" fill="none" opacity="0.6" />
-            <path d="M 680 120 C 730 120, 730 180, 780 180" stroke="#f59e0b" strokeWidth="1.5" fill="none" opacity="0.6" />
-            <path d="M 680 280 C 730 280, 730 280, 780 280" stroke="#3b82f6" strokeWidth="1.5" fill="none" opacity="0.6" />
-            <path d="M 680 380 C 730 380, 730 380, 780 380" stroke="#f59e0b" strokeWidth="1.5" fill="none" opacity="0.6" />
-          </svg>
-
-          {/* Root Application Node */}
-          <div 
-            onClick={() => setSelectedNode({ label: projectName || 'Quantum Vault Demo', type: 'Application Root', info: 'Microservice root boundary container' })}
-            className="absolute left-6 top-[160px] w-40 p-3.5 rounded-xl bg-white dark:bg-zinc-900 border border-zinc-300 dark:border-zinc-700 shadow-md cursor-pointer hover:border-blue-500 transition-colors text-center"
-          >
-            <div className="w-8 h-8 rounded-lg bg-blue-50 dark:bg-blue-950/60 text-blue-600 dark:text-blue-400 mx-auto flex items-center justify-center mb-1.5 border border-blue-200 dark:border-blue-900/40">
-              <Layers className="w-4 h-4" />
-            </div>
-            <div className="font-bold text-zinc-900 dark:text-zinc-100 text-xs font-['Outfit'] truncate">{projectName || 'Quantum Vault Demo'}</div>
-            <div className="text-[10px] text-zinc-400 font-mono uppercase mt-0.5">App Root</div>
-          </div>
-
-          {/* File Nodes */}
-          {[
-            { label: 'crypto_service.py', top: 55, path: 'backend/crypto_service.py' },
-            { label: 'auth.py', top: 155, path: 'backend/auth.py' },
-            { label: 'hasher.py', top: 255, path: 'backend/hasher.py' },
-            { label: 'requirements.txt', top: 355, path: 'manifests/requirements.txt' }
-          ].map((file, idx) => (
-            <div
-              key={idx}
-              onClick={() => setSelectedNode({ label: file.label, type: 'Source File', info: file.path })}
-              className="absolute left-[280px] w-40 p-3 rounded-xl bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 shadow-sm cursor-pointer hover:border-blue-500 transition-colors"
-              style={{ top: file.top }}
-            >
-              <div className="flex items-center gap-2">
-                <FileCode2 className="w-3.5 h-3.5 text-zinc-400 shrink-0" />
-                <div className="font-mono text-xs font-medium text-zinc-800 dark:text-zinc-200 truncate">{file.label}</div>
-              </div>
-              <div className="text-[10px] text-zinc-400 mt-0.5 truncate font-mono">{file.path}</div>
-            </div>
-          ))}
-
-          {/* Library Nodes */}
-          {[
-            { label: 'cryptography', top: 95, desc: 'hazmat.primitives.asymmetric' },
-            { label: 'hashlib', top: 255, desc: 'Python standard library' },
-            { label: 'pycryptodome', top: 355, desc: 'Legacy package v3.10.1' }
-          ].map((lib, idx) => (
-            <div
-              key={idx}
-              onClick={() => setSelectedNode({ label: lib.label, type: 'Dependency Library', info: lib.desc })}
-              className="absolute left-[540px] w-36 p-3 rounded-xl bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 shadow-sm cursor-pointer hover:border-blue-500 transition-colors"
-              style={{ top: lib.top }}
-            >
-              <div className="flex items-center gap-2">
-                <Cpu className="w-3.5 h-3.5 text-blue-500 shrink-0" />
-                <div className="font-medium text-xs text-zinc-800 dark:text-zinc-200 truncate">{lib.label}</div>
-              </div>
-              <div className="text-[10px] text-zinc-400 mt-0.5 font-mono">{lib.desc}</div>
-            </div>
-          ))}
-
-          {/* Algorithm Nodes */}
-          {[
-            { label: 'RSA-2048', top: 55, sev: 'critical', hndl: true, color: 'border-red-300 dark:border-red-900/60 bg-red-50/80 dark:bg-red-950/40 text-red-600 dark:text-red-300' },
-            { label: 'ECC SECP256R1', top: 155, sev: 'high', hndl: true, color: 'border-amber-300 dark:border-amber-900/60 bg-amber-50/80 dark:bg-amber-950/40 text-amber-600 dark:text-amber-300' },
-            { label: 'MD5 Hashing', top: 255, sev: 'low', hndl: false, color: 'border-zinc-300 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-900 text-zinc-700 dark:text-zinc-300' },
-            { label: 'DES / RC4', top: 355, sev: 'low', hndl: false, color: 'border-amber-300 dark:border-amber-900/60 bg-amber-50/80 dark:bg-amber-950/40 text-amber-600 dark:text-amber-300' }
-          ].map((alg, idx) => (
-            <div
-              key={idx}
-              onClick={() => setSelectedNode({ label: alg.label, type: 'Cryptographic Primitive', info: `Severity: ${alg.sev.toUpperCase()} ${alg.hndl ? '| Harvest-Now-Decrypt-Later Risk' : ''}` })}
-              className={`absolute left-[780px] w-48 p-3 rounded-xl border ${alg.color} shadow-sm cursor-pointer hover:border-zinc-500 transition-colors`}
-              style={{ top: alg.top }}
-            >
-              <div className="flex items-center justify-between font-mono">
-                <div className="font-bold text-xs">{alg.label}</div>
-                {alg.hndl && (
-                  <span className="text-[9px] font-bold uppercase px-1.5 py-0.5 rounded bg-red-100 dark:bg-red-950 text-red-600 dark:text-red-400 border border-red-200 dark:border-red-900/50">
-                    HNDL
-                  </span>
-                )}
-              </div>
-              <div className="text-[10px] text-zinc-500 dark:text-zinc-400 mt-1 capitalize font-sans">Risk: {alg.sev}</div>
-            </div>
-          ))}
+      {error ? (
+        <div className="p-5 rounded-xl bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-900/50 text-sm text-red-600 dark:text-red-400">
+          {error}
         </div>
-      </div>
+      ) : null}
 
-      {/* Selected Node Details Box */}
-      {selectedNode && (
-        <div className="p-4 rounded-xl bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 flex items-center justify-between shadow-sm">
-          <div className="flex items-center gap-3">
-            <div className="p-2 rounded-lg bg-blue-50 dark:bg-blue-950/60 text-blue-600 dark:text-blue-400">
-              <ShieldAlert className="w-4 h-4" />
+      {scanId && !error && !graphData ? (
+        <div className="p-5 rounded-xl bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 text-sm text-zinc-500">
+          Loading scan graph…
+        </div>
+      ) : null}
+
+      {!scanId || (graphData && positionedNodes.length === 0) ? (
+        <div className="architecture-empty flex-1 rounded-xl min-h-[460px] relative overflow-hidden border border-zinc-200 dark:border-zinc-800 flex items-center justify-center px-6 py-12">
+          <div className="architecture-empty-grid" aria-hidden="true" />
+          <div className="relative z-10 max-w-md text-center">
+            <div className="architecture-empty-icon mx-auto mb-5">
+              <Network className="w-6 h-6" />
             </div>
-            <div>
-              <div className="text-xs font-bold text-zinc-900 dark:text-zinc-100">{selectedNode.label}</div>
-              <div className="text-[11px] text-zinc-500 dark:text-zinc-400 mt-0.5">{selectedNode.type} · {selectedNode.info}</div>
+            <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-zinc-500 dark:text-zinc-400 mb-2">
+              Architecture map
+            </p>
+            <h2 className="text-lg font-semibold text-zinc-900 dark:text-zinc-100">
+              Your dependency graph will appear here
+            </h2>
+            <p className="mt-2 text-sm leading-6 text-zinc-500 dark:text-zinc-400">
+              Upload a code archive to map cryptographic components and their relationships.
+            </p>
+          </div>
+        </div>
+      ) : null}
+
+      {graphData && positionedNodes.length > 0 ? (
+        <div className="flex-1 rounded-xl p-6 min-h-[500px] relative overflow-auto bg-zinc-50 dark:bg-[#1f1e1a] border border-zinc-200 dark:border-zinc-800 shadow-inner">
+          <div
+            className="relative"
+            style={{
+              width: 1140,
+              height: canvasHeight,
+              transform: `scale(${zoom})`,
+              transformOrigin: 'top left',
+            }}
+          >
+            {/* SVG Connecting Edges */}
+            <svg
+              className="absolute inset-0 pointer-events-none"
+              style={{ width: 1140, height: canvasHeight }}
+            >
+              {graphData.edges.map((edge) => {
+                const source = nodesById.get(edge.source);
+                const target = nodesById.get(edge.target);
+                if (!source || !target) return null;
+
+                const sx = source.layoutX + source.width;
+                const sy = source.layoutY + source.height / 2;
+                const tx = target.layoutX;
+                const ty = target.layoutY + target.height / 2;
+
+                const dx = Math.max(30, tx - sx);
+                const cx1 = sx + dx * 0.45;
+                const cx2 = tx - dx * 0.45;
+
+                const isVulnerable =
+                  Boolean(target.data.hndl) ||
+                  target.data.severity === 'critical' ||
+                  target.data.severity === 'high';
+
+                const strokeColor = isVulnerable ? '#dc6d5b' : '#9c9588';
+
+                return (
+                  <path
+                    key={edge.id}
+                    d={`M ${sx} ${sy} C ${cx1} ${sy}, ${cx2} ${ty}, ${tx} ${ty}`}
+                    fill="none"
+                    stroke={strokeColor}
+                    strokeWidth={isVulnerable ? '2' : '1.5'}
+                    strokeDasharray={edge.animated || target.data.hndl ? '5 4' : undefined}
+                  />
+                );
+              })}
+            </svg>
+
+            {/* Render Nodes with Strict Inline Absolute Positioning */}
+            {positionedNodes.map((node) => {
+              const severity = String(node.data.severity || '').toLowerCase();
+              const label = String(node.data.label || node.id);
+              const isHndl = Boolean(node.data.hndl);
+              const isSelected = selectedNode?.id === node.id;
+
+              return (
+                <button
+                  key={node.id}
+                  type="button"
+                  onClick={() => setSelectedNode(node)}
+                  className={`!absolute p-3 rounded-xl border text-left transition-all shadow-sm ${
+                    isSelected
+                      ? 'border-blue-500 ring-2 ring-blue-500/30'
+                      : 'border-zinc-200 dark:border-[#3d3a33] hover:border-zinc-400 dark:hover:border-zinc-500'
+                  } ${
+                    node.type === 'application'
+                      ? 'bg-blue-50/70 dark:bg-[#1d2733] border-blue-200 dark:border-blue-900/50'
+                      : node.type === 'algorithm' && isHndl
+                      ? 'bg-red-50/70 dark:bg-[#382624] border-red-200 dark:border-red-900/60'
+                      : 'bg-white dark:bg-[#282722]'
+                  }`}
+                  style={{
+                    position: 'absolute',
+                    left: `${node.layoutX}px`,
+                    top: `${node.layoutY}px`,
+                    width: `${node.width}px`,
+                    height: `${node.height}px`,
+                  }}
+                >
+                  <div className="flex items-center justify-between gap-1.5">
+                    <div className="flex items-center gap-2 min-w-0">
+                      {node.type === 'application' ? (
+                        <Layers className="w-4 h-4 shrink-0 text-blue-500" />
+                      ) : node.type === 'file' ? (
+                        <FileCode2 className="w-4 h-4 shrink-0 text-zinc-400" />
+                      ) : node.type === 'library' ? (
+                        <Cpu className="w-4 h-4 shrink-0 text-indigo-400" />
+                      ) : isHndl ? (
+                        <ShieldAlert className="w-4 h-4 shrink-0 text-red-500" />
+                      ) : (
+                        <ShieldCheck className="w-4 h-4 shrink-0 text-emerald-500" />
+                      )}
+                      <span className="font-semibold text-xs text-zinc-900 dark:text-zinc-100 truncate">
+                        {label}
+                      </span>
+                    </div>
+
+                    {isHndl ? (
+                      <span className="px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider bg-red-100 dark:bg-red-950 text-red-700 dark:text-red-400 shrink-0">
+                        HNDL
+                      </span>
+                    ) : null}
+                  </div>
+
+                  <div className="mt-1 flex items-center justify-between text-[10px] text-zinc-500 dark:text-zinc-400 truncate">
+                    <span className="truncate">
+                      {node.data.full_path || node.data.kind || node.data.usage || (node.type === 'application' ? 'Service Boundary' : 'Asset')}
+                    </span>
+                    {severity ? (
+                      <span className="capitalize font-mono ml-1 text-zinc-600 dark:text-zinc-300">
+                        {severity}
+                      </span>
+                    ) : null}
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      ) : null}
+
+      {/* Selected Node Details Drawer */}
+      {selectedNode ? (
+        <div className="p-4 rounded-xl bg-white dark:bg-[#282722] border border-zinc-200 dark:border-[#3b3931] flex items-center justify-between shadow-sm">
+          <div>
+            <div className="text-xs font-bold text-zinc-900 dark:text-zinc-100">
+              {String(selectedNode.data.label || selectedNode.id)}
+            </div>
+            <div className="text-[11px] text-zinc-500 dark:text-zinc-400 mt-1">
+              Type: <strong className="capitalize">{selectedNode.type}</strong>
+              {selectedNode.data.full_path ? ` · Path: ${selectedNode.data.full_path}` : ''}
+              {selectedNode.data.usage ? ` · Usage: ${selectedNode.data.usage}` : ''}
+              {selectedNode.data.severity ? ` · Severity: ${selectedNode.data.severity}` : ''}
+              {selectedNode.data.hndl ? ' · Harvest-Now-Decrypt-Later Risk' : ''}
             </div>
           </div>
           <button
             onClick={() => setSelectedNode(null)}
-            className="text-xs text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200 px-2 py-1 rounded"
+            className="text-xs text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-200 px-2 py-1 rounded"
           >
             Dismiss
           </button>
         </div>
-      )}
+      ) : null}
     </div>
   );
 };

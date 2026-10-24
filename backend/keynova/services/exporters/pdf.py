@@ -25,79 +25,69 @@ BACKEND_DIR = Path(__file__).resolve().parent.parent.parent.parent
 if str(BACKEND_DIR) not in sys.path:
     sys.path.insert(0, str(BACKEND_DIR))
 
-try:
-    from reportlab.lib.pagesizes import letter
-    from reportlab.lib import colors
-    from reportlab.platypus import (
-        SimpleDocTemplate,
-        Paragraph,
-        Spacer,
-        Table,
-        TableStyle,
-        HRFlowable,
-        KeepTogether,
-        PageBreak,
-    )
-    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-    from reportlab.pdfgen import canvas
-    REPORTLAB_AVAILABLE = True
-except (ImportError, ModuleNotFoundError):
-    REPORTLAB_AVAILABLE = False
-    letter = (612.0, 792.0)
-    colors = None
-    SimpleDocTemplate = Paragraph = Spacer = Table = TableStyle = HRFlowable = KeepTogether = PageBreak = None
-    getSampleStyleSheet = ParagraphStyle = None
-    canvas = None
+from reportlab.lib.pagesizes import letter
+from reportlab.lib import colors
+from reportlab.platypus import (
+    SimpleDocTemplate,
+    Paragraph,
+    Spacer,
+    Table,
+    TableStyle,
+    HRFlowable,
+    KeepTogether,
+    PageBreak,
+)
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.pdfgen import canvas
+
+REPORTLAB_AVAILABLE = True
 
 
-if REPORTLAB_AVAILABLE:
-    class ReportNumberedCanvas(canvas.Canvas):
-        """
-        Two-pass canvas that dynamically calculates the total page count
-        and renders consistent running headers and footers across all pages.
-        """
+class ReportNumberedCanvas(canvas.Canvas):
+    """
+    Two-pass canvas that dynamically calculates the total page count
+    and renders consistent running headers and footers across all pages.
+    """
 
-        def __init__(self, *args, **kwargs):
-            super(ReportNumberedCanvas, self).__init__(*args, **kwargs)
-            self._saved_page_states = []
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._saved_page_states = []
 
-        def showPage(self):
-            self._saved_page_states.append(dict(self.__dict__))
-            self._startPage()
+    def showPage(self):
+        self._saved_page_states.append(dict(self.__dict__))
+        getattr(self, "_startPage")()
 
-        def save(self):
-            num_pages = len(self._saved_page_states)
-            for state in self._saved_page_states:
-                self.__dict__.update(state)
-                self.draw_decorations(num_pages)
-                canvas.Canvas.showPage(self)
-            canvas.Canvas.save(self)
+    def save(self):
+        num_pages = len(self._saved_page_states)
+        for state in self._saved_page_states:
+            self.__dict__.update(state)
+            self.draw_decorations(num_pages)
+            canvas.Canvas.showPage(self)
+        canvas.Canvas.save(self)
 
-        def draw_decorations(self, total_pages: int):
-            self.saveState()
-            self.setFont("Helvetica-Bold", 7.5)
-            self.setFillColor(colors.HexColor("#64748b"))
+    def draw_decorations(self, total_pages: int):
+        self.saveState()
+        self.setFont("Helvetica-Bold", 7.5)
+        self.setFillColor(colors.HexColor("#64748b"))
 
-            # Running Header (pages 2+)
-            if self._pageNumber > 1:
-                self.drawString(40, letter[1] - 30, "KEYNOVA EXECUTIVE POST-QUANTUM READINESS REPORT")
-                self.drawRightString(letter[0] - 40, letter[1] - 30, "CONFIDENTIAL CRYPTOGRAPHIC AUDIT")
-                self.setStrokeColor(colors.HexColor("#cbd5e1"))
-                self.setLineWidth(0.5)
-                self.line(40, letter[1] - 34, letter[0] - 40, letter[1] - 34)
+        page_num = getattr(self, "_pageNumber", 1)
 
-            # Running Footer (all pages)
+        # Running Header (pages 2+)
+        if page_num > 1:
+            self.drawString(40, letter[1] - 28, "KEYNOVA EXECUTIVE POST-QUANTUM READINESS REPORT")
+            self.drawRightString(letter[0] - 40, letter[1] - 28, "CONFIDENTIAL CRYPTOGRAPHIC AUDIT")
             self.setStrokeColor(colors.HexColor("#cbd5e1"))
             self.setLineWidth(0.5)
-            self.line(40, 36, letter[0] - 40, 36)
-            self.setFont("Helvetica", 7.5)
-            self.drawString(40, 24, "KEYNOVA — Autonomous Post-Quantum Migration Platform")
-            self.drawRightString(letter[0] - 40, 24, f"Page {self._pageNumber} of {total_pages}")
-            self.restoreState()
-else:
-    class ReportNumberedCanvas:
-        def __init__(self, *args, **kwargs):
-            pass
+            self.line(40, letter[1] - 32, letter[0] - 40, letter[1] - 32)
+
+        # Running Footer (all pages)
+        self.setStrokeColor(colors.HexColor("#cbd5e1"))
+        self.setLineWidth(0.5)
+        self.line(40, 34, letter[0] - 40, 34)
+        self.setFont("Helvetica", 7.5)
+        self.drawString(40, 22, "KEYNOVA — Autonomous Post-Quantum Migration Platform")
+        self.drawRightString(letter[0] - 40, 22, f"Page {page_num} of {total_pages}")
+        self.restoreState()
 
 
 def _escape(val: Any, default: str = "") -> str:
@@ -237,7 +227,7 @@ def generate_pdf_report(
     if findings is None:
         findings = []
 
-    clean_project_name = str(project_name).strip() if project_name and str(project_name).strip() else "Cryptographic Service"
+    clean_project_name = project_name.strip() if project_name and project_name.strip() else "Cryptographic Service"
     scan_id = str(scan_meta.get("id") or "").strip()
     if not scan_id:
         scan_id = "SCAN-LOCAL-01"
@@ -253,8 +243,8 @@ def generate_pdf_report(
         pagesize=letter,
         leftMargin=40,
         rightMargin=40,
-        topMargin=42,
-        bottomMargin=45
+        topMargin=46,
+        bottomMargin=46
     )
 
     # Color Palette
@@ -274,29 +264,53 @@ def generate_pdf_report(
         'RepTitle',
         parent=styles['Normal'],
         fontName='Helvetica-Bold',
-        fontSize=20,
-        leading=24,
+        fontSize=18,
+        leading=22,
         textColor=c_primary,
-        spaceAfter=4
+        spaceAfter=3
     )
     subtitle_style = ParagraphStyle(
         'RepSub',
         parent=styles['Normal'],
         fontName='Helvetica',
-        fontSize=9,
-        leading=13,
+        fontSize=8.5,
+        leading=11.5,
         textColor=c_muted,
-        spaceAfter=12
+        spaceAfter=6
     )
     h1_style = ParagraphStyle(
         'RepH1',
         parent=styles['Normal'],
         fontName='Helvetica-Bold',
-        fontSize=11,
-        leading=14,
+        fontSize=10,
+        leading=13,
         textColor=c_primary,
-        spaceBefore=10,
-        spaceAfter=4
+        spaceBefore=7,
+        spaceAfter=3
+    )
+    body_style = ParagraphStyle(
+        'RepBody',
+        parent=styles['Normal'],
+        fontName='Helvetica',
+        fontSize=8,
+        leading=11.5,
+        textColor=c_dark
+    )
+    banner_style = ParagraphStyle(
+        'RepBanner',
+        parent=styles['Normal'],
+        fontName='Helvetica',
+        fontSize=8,
+        leading=11.5,
+        textColor=c_dark
+    )
+    roadmap_style = ParagraphStyle(
+        'RepRoadmap',
+        parent=styles['Normal'],
+        fontName='Helvetica',
+        fontSize=8,
+        leading=11.5,
+        textColor=c_dark
     )
     cell_style = ParagraphStyle(
         'RepCell',
@@ -323,7 +337,7 @@ def generate_pdf_report(
     raw_score = scan_meta.get("readiness_score")
     if raw_score is not None:
         try:
-            score = max(0, min(100, int(round(float(raw_score)))))
+            score = max(0, min(100, round(float(raw_score))))
             score_display = f"{score} / 100"
             if score < 50:
                 score_color = "#dc2626"
@@ -422,8 +436,10 @@ def generate_pdf_report(
     # =========================================================================
     # PAGE 1: COVER PAGE
     # =========================================================================
-    story.append(Spacer(1, 20))
-    story.append(Paragraph("<font size='10' color='#2563eb'><b>KEYNOVA PLATFORM</b></font>", ParagraphStyle('Brand', parent=styles['Normal'], spaceAfter=6)))
+    # =========================================================================
+    # PAGE 1: EXECUTIVE POSTURE DASHBOARD
+    # =========================================================================
+    story.append(Paragraph("<font size='9.5' color='#2563eb'><b>KEYNOVA PLATFORM</b></font>", ParagraphStyle('Brand', parent=styles['Normal'], spaceAfter=3)))
     story.append(Paragraph("Executive Post-Quantum Cryptographic Audit Report", title_style))
     story.append(Paragraph(
         f"Target Repository: <b>{_escape(clean_project_name)}</b><br/>"
@@ -431,39 +447,131 @@ def generate_pdf_report(
         f"Audit Date: {_escape(date_str)} ({_escape(timestamp_str)})",
         subtitle_style
     ))
-    story.append(HRFlowable(width="100%", thickness=2, color=c_accent, spaceBefore=4, spaceAfter=20))
+    story.append(HRFlowable(width="100%", thickness=1.5, color=c_accent, spaceBefore=2, spaceAfter=8))
 
-    # Large visual Readiness Index score gauge and risk tier badge
+    # Readiness Index score gauge
+    p_gauge_title = Paragraph(
+        "<b>KEYNOVA READINESS INDEX (R)</b>",
+        ParagraphStyle(
+            'ScoreTitle',
+            parent=styles['Normal'],
+            fontName='Helvetica-Bold',
+            fontSize=8.5,
+            leading=11,
+            alignment=1,
+            textColor=colors.HexColor('#64748b')
+        )
+    )
+    p_gauge_score = Paragraph(
+        f"<b>{score_display}</b>",
+        ParagraphStyle(
+            'ScoreDisplay',
+            parent=styles['Normal'],
+            fontName='Helvetica-Bold',
+            fontSize=30,
+            leading=34,
+            alignment=1,
+            textColor=colors.HexColor(score_color)
+        )
+    )
+    p_gauge_badge = Paragraph(
+        f"<b>[{status_label}]</b>",
+        ParagraphStyle(
+            'ScoreBadge',
+            parent=styles['Normal'],
+            fontName='Helvetica-Bold',
+            fontSize=9.5,
+            leading=12,
+            alignment=1,
+            textColor=colors.HexColor(score_color)
+        )
+    )
+    p_gauge_details = Paragraph(
+        f"<b>Executive Posture:</b> {score_interpretation}<br/>"
+        f"<b>Active HNDL Exposures:</b> <font color='{c_danger.hexval()}'><b>{hndl_count}</b></font> | "
+        f"<b>Audit Coverage:</b> {coverage_str} ({files_str} files scanned)",
+        body_style
+    )
+
     gauge_table_data = [
-        [
-            Paragraph(
-                f"<font size='9' color='#64748b'>KEYNOVA READINESS INDEX (R)</font><br/>"
-                f"<font size='38' color='{score_color}'><b>{score_display}</b></font><br/>"
-                f"<font size='11' color='{score_color}'><b>[{status_label}]</b></font>",
-                ParagraphStyle('ScoreStyle', parent=cell_style, alignment=1, spaceAfter=8)
-            )
-        ],
-        [
-            Paragraph(
-                f"<b>Executive Posture:</b> {score_interpretation}<br/><br/>"
-                f"<b>Active HNDL Exposures:</b> <font color='{c_danger.hexval()}'><b>{hndl_count}</b></font> | "
-                f"<b>Audit Coverage:</b> {coverage_str} ({files_str} files scanned)",
-                cell_style
-            )
-        ]
+        [p_gauge_title],
+        [p_gauge_score],
+        [p_gauge_badge],
+        [p_gauge_details]
     ]
     t_cover_gauge = Table(gauge_table_data, colWidths=[532])
     t_cover_gauge.setStyle(TableStyle([
         ('BACKGROUND', (0, 0), (-1, -1), colors.HexColor("#f8fafc")),
         ('BOX', (0, 0), (-1, -1), 1.5, colors.HexColor(score_color)),
-        ('LINEBELOW', (0, 0), (-1, 0), 0.5, c_border),
-        ('PADDING', (0, 0), (-1, -1), 14),
-        ('ALIGN', (0, 0), (-1, 0), 'CENTER'),
+        ('LINEBELOW', (0, 2), (-1, 2), 0.5, c_border),
+        ('ALIGN', (0, 0), (-1, 2), 'CENTER'),
+        ('TOPPADDING', (0, 0), (-1, 0), 8),
+        ('BOTTOMPADDING', (0, 0), (-1, 0), 3),
+        ('TOPPADDING', (0, 1), (-1, 1), 2),
+        ('BOTTOMPADDING', (0, 1), (-1, 1), 4),
+        ('TOPPADDING', (0, 2), (-1, 2), 2),
+        ('BOTTOMPADDING', (0, 2), (-1, 2), 8),
+        ('PADDING', (0, 3), (-1, 3), 7),
     ]))
     story.append(t_cover_gauge)
-    story.append(Spacer(1, 24))
+    story.append(Spacer(1, 6))
 
-    # Keynova Compliance Seal / Summary
+    # Section 1: Threat Landscape & Security Posture Overview
+    story.append(Paragraph("1. Threat Landscape & Security Posture Overview", h1_style))
+    story.append(HRFlowable(width="100%", thickness=1, color=c_accent, spaceBefore=1, spaceAfter=5))
+
+    banner_left = Paragraph(
+        f"<b>Readiness Score:</b> <font color='{score_color}'><b>{score_display}</b></font><br/>"
+        f"<b>Risk Posture:</b> <font color='{score_color}'><b>{status_label}</b></font><br/>"
+        f"<b>Audit Coverage:</b> {coverage_str} ({files_str} files)",
+        banner_style
+    )
+    banner_right = Paragraph(
+        f"<b>HNDL Exposures:</b> <font color='{c_danger.hexval()}'><b>{hndl_count} detected</b></font><br/>"
+        f"<b>Quantum-Vulnerable Assets:</b> <font color='{c_danger.hexval()}'><b>{quantum_vuln_count}</b></font><br/>"
+        f"<b>Quantum-Safe Assets:</b> <font color='{c_success.hexval()}'><b>{quantum_safe_count}</b></font>",
+        banner_style
+    )
+    banner_summary = Paragraph(f"<b>Key Threat Assessment:</b> {risk_summary}", banner_style)
+
+    banner_data = [
+        [banner_left, banner_right],
+        [banner_summary, ""]
+    ]
+    t_banner = Table(banner_data, colWidths=[266, 266])
+    t_banner.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, -1), colors.HexColor("#f8fafc")),
+        ('BOX', (0, 0), (-1, -1), 1, colors.HexColor(score_color)),
+        ('SPAN', (0, 1), (1, 1)),
+        ('PADDING', (0, 0), (-1, -1), 6),
+        ('LINEBELOW', (0, 0), (-1, 0), 0.5, c_border),
+    ]))
+    story.append(t_banner)
+    story.append(Spacer(1, 6))
+
+    # Severity Breakdown KPI Cards
+    story.append(Paragraph("<b>Cryptographic Asset Severity Breakdown</b>", ParagraphStyle('Sub', parent=h1_style, fontSize=9, spaceBefore=2, spaceAfter=2)))
+    summary_cards_data = [
+        [
+            Paragraph(f"<font size='12' color='{c_primary.hexval()}'><b>{total_findings}</b></font><br/><font size='6.5' color='#64748b'><b>TOTAL ASSETS</b></font>", ParagraphStyle('C1', parent=body_style, alignment=1, leading=11)),
+            Paragraph(f"<font size='12' color='{c_danger.hexval()}'><b>{sev_counts['critical']}</b></font><br/><font size='6.5' color='#64748b'><b>CRITICAL</b></font>", ParagraphStyle('C2', parent=body_style, alignment=1, leading=11)),
+            Paragraph(f"<font size='12' color='#ea580c'><b>{sev_counts['high']}</b></font><br/><font size='6.5' color='#64748b'><b>HIGH</b></font>", ParagraphStyle('C3', parent=body_style, alignment=1, leading=11)),
+            Paragraph(f"<font size='12' color='{c_warning.hexval()}'><b>{sev_counts['medium']}</b></font><br/><font size='6.5' color='#64748b'><b>MEDIUM</b></font>", ParagraphStyle('C4', parent=body_style, alignment=1, leading=11)),
+            Paragraph(f"<font size='12' color='{c_muted.hexval()}'><b>{sev_counts['low']}</b></font><br/><font size='6.5' color='#64748b'><b>LOW</b></font>", ParagraphStyle('C5', parent=body_style, alignment=1, leading=11)),
+        ]
+    ]
+    t_summary = Table(summary_cards_data, colWidths=[106, 106, 106, 107, 107])
+    t_summary.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor("#f8fafc")),
+        ('GRID', (0, 0), (-1, 0), 0.5, c_border),
+        ('PADDING', (0, 0), (-1, -1), 5),
+        ('ALIGN', (0, 0), (-1, 0), 'CENTER'),
+        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+    ]))
+    story.append(t_summary)
+    story.append(Spacer(1, 6))
+
+    # NIST Compliance Notice / Seal
     cover_seal = [
         [
             Paragraph(
@@ -472,7 +580,7 @@ def generate_pdf_report(
                 "FIPS 204 (ML-DSA), and FIPS 205 (SLH-DSA) post-quantum cryptographic standards. "
                 "Static AST analysis and manifest inspection identify classical algorithms vulnerable "
                 "to Shor's and Grover's quantum algorithms.",
-                cell_style
+                ParagraphStyle('Seal', parent=body_style, fontSize=7.5, leading=10)
             )
         ]
     ]
@@ -480,75 +588,19 @@ def generate_pdf_report(
     t_cover_seal.setStyle(TableStyle([
         ('BACKGROUND', (0, 0), (-1, -1), colors.HexColor("#eff6ff")),
         ('BOX', (0, 0), (-1, -1), 0.5, colors.HexColor("#93c5fd")),
-        ('PADDING', (0, 0), (-1, -1), 10),
+        ('PADDING', (0, 0), (-1, -1), 6),
     ]))
     story.append(t_cover_seal)
 
-    # Page 1 Break
+    # Page Break after executive dashboard
     story.append(PageBreak())
 
     # =========================================================================
-    # PAGE 2: EXECUTIVE SUMMARY & HNDL RISK OVERVIEW
+    # PAGE 2+: REMEDIATION ROADMAP, INVENTORY & AUDIT SCOPE
     # =========================================================================
-    story.append(Paragraph("1. Executive Summary & Threat Landscape", h1_style))
-    story.append(HRFlowable(width="100%", thickness=1, color=c_accent, spaceBefore=1, spaceAfter=8))
+    story.append(Paragraph("2. Strategic NIST Remediation Roadmap", h1_style))
+    story.append(HRFlowable(width="100%", thickness=1, color=c_accent, spaceBefore=1, spaceAfter=5))
 
-    # Executive banner
-    banner_data = [
-        [
-            Paragraph(
-                f"<b>Readiness Score:</b> <font size='13' color='{score_color}'><b>{score_display}</b></font><br/>"
-                f"<b>Risk Status:</b> <font color='{score_color}'><b>{status_label}</b></font><br/>"
-                f"<b>Code Coverage:</b> {coverage_str} ({files_str} files)",
-                cell_style
-            ),
-            Paragraph(
-                f"<b>Harvest-Now-Decrypt-Later Threats:</b> <font color='{c_danger.hexval()}'><b>{hndl_count} detected</b></font><br/>"
-                f"<b>Quantum-Vulnerable Assets:</b> <font color='{c_danger.hexval()}'><b>{quantum_vuln_count}</b></font><br/>"
-                f"<b>Quantum-Safe / Agile Assets:</b> <font color='{c_success.hexval()}'><b>{quantum_safe_count}</b></font>",
-                cell_style
-            )
-        ],
-        [
-            Paragraph(f"<b>Key Threat Assessment:</b> {risk_summary}", cell_style),
-            ""
-        ]
-    ]
-    t_banner = Table(banner_data, colWidths=[266, 266])
-    t_banner.setStyle(TableStyle([
-        ('BACKGROUND', (0, 0), (-1, -1), colors.HexColor("#f1f5f9")),
-        ('BOX', (0, 0), (-1, -1), 1, colors.HexColor(score_color)),
-        ('SPAN', (0, 1), (1, 1)),
-        ('PADDING', (0, 0), (-1, -1), 6),
-        ('LINEBELOW', (0, 0), (-1, 0), 0.5, c_border),
-    ]))
-    story.append(t_banner)
-    story.append(Spacer(1, 10))
-
-    # Severity Breakdown Table (KPI Cards)
-    story.append(Paragraph("<b>Cryptographic Asset Severity Breakdown</b>", ParagraphStyle('Sub', parent=h1_style, fontSize=9.5)))
-    summary_cards_data = [
-        [
-            Paragraph(f"<font size='12' color='{c_primary.hexval()}'><b>{total_findings}</b></font><br/><font size='6' color='#64748b'>TOTAL ASSETS</font>", ParagraphStyle('C1', parent=cell_style, alignment=1)),
-            Paragraph(f"<font size='12' color='{c_danger.hexval()}'><b>{sev_counts['critical']}</b></font><br/><font size='6' color='#64748b'>CRITICAL</font>", ParagraphStyle('C2', parent=cell_style, alignment=1)),
-            Paragraph(f"<font size='12' color='#ea580c'><b>{sev_counts['high']}</b></font><br/><font size='6' color='#64748b'>HIGH</font>", ParagraphStyle('C3', parent=cell_style, alignment=1)),
-            Paragraph(f"<font size='12' color='{c_warning.hexval()}'><b>{sev_counts['medium']}</b></font><br/><font size='6' color='#64748b'>MEDIUM</font>", ParagraphStyle('C4', parent=cell_style, alignment=1)),
-            Paragraph(f"<font size='12' color='{c_muted.hexval()}'><b>{sev_counts['low']}</b></font><br/><font size='6' color='#64748b'>LOW</font>", ParagraphStyle('C5', parent=cell_style, alignment=1)),
-        ]
-    ]
-    t_summary = Table(summary_cards_data, colWidths=[106, 106, 106, 107, 107])
-    t_summary.setStyle(TableStyle([
-        ('BACKGROUND', (0, 0), (-1, 0), c_card_bg),
-        ('GRID', (0, 0), (-1, 0), 0.5, c_border),
-        ('PADDING', (0, 0), (-1, -1), 6),
-        ('ALIGN', (0, 0), (-1, 0), 'CENTER'),
-        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-    ]))
-    story.append(t_summary)
-    story.append(Spacer(1, 12))
-
-    # Strategic Remediation Priorities (NIST Roadmap)
-    story.append(Paragraph("<b>Strategic NIST Remediation Roadmap</b>", ParagraphStyle('Sub2', parent=h1_style, fontSize=9.5)))
     has_hndl_or_kem = any(
         bool(f.get("hndl")) or any(k in str(f.get("algorithm") or "").lower() for k in ["ecdh", "dh", "x25519"]) or
         ("rsa" in str(f.get("algorithm") or "").lower() and any(u in str(f.get("usage") or "").lower() for u in ["encrypt", "key", "kem", "exchange"]))
@@ -601,22 +653,18 @@ def generate_pdf_report(
             f"to monitor dependency manifests and crypto-asset compliance against updated NIST migration deadlines."
         )
 
-    priorities_text = "<br/>".join(priority_items)
-    t_priorities = Table([[Paragraph(priorities_text, cell_style)]], colWidths=[532])
+    priorities_text = "<br/><br/>".join(priority_items)
+    t_priorities = Table([[Paragraph(priorities_text, roadmap_style)]], colWidths=[532])
     t_priorities.setStyle(TableStyle([
         ('BACKGROUND', (0, 0), (-1, -1), colors.HexColor("#eff6ff")),
         ('BOX', (0, 0), (-1, -1), 0.5, colors.HexColor("#93c5fd")),
         ('PADDING', (0, 0), (-1, -1), 6)
     ]))
     story.append(t_priorities)
+    story.append(Spacer(1, 8))
 
-    # Page 2 Break
-    story.append(PageBreak())
-
-    # =========================================================================
-    # PAGE 3+: FULL CRYPTOGRAPHIC DEBT INVENTORY
-    # =========================================================================
-    story.append(Paragraph("2. Full Cryptographic Debt Inventory", h1_style))
+    # Full Cryptographic Debt Inventory
+    story.append(Paragraph("3. Full Cryptographic Debt Inventory", h1_style))
     story.append(HRFlowable(width="100%", thickness=1, color=c_accent, spaceBefore=1, spaceAfter=4))
 
     findings_rows = [
@@ -687,9 +735,9 @@ def generate_pdf_report(
                 Paragraph(_escape(remediation_desc), cell_style)
             ])
 
-    # Table ColWidths: 110 + 85 + 55 + 42 + 120 + 120 = 532
-    t_findings = Table(findings_rows, colWidths=[110, 85, 55, 42, 120, 120], repeatRows=1)
-    table_styles = [
+    # Table ColWidths: 110 + 85 + 52 + 40 + 122 + 123 = 532
+    t_findings = Table(findings_rows, colWidths=[110, 85, 52, 40, 122, 123], repeatRows=1)
+    table_styles: List[Any] = [
         ('BACKGROUND', (0, 0), (-1, 0), c_primary),
         ('GRID', (0, 0), (-1, -1), 0.5, c_border),
         ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, c_card_bg]),
@@ -701,10 +749,10 @@ def generate_pdf_report(
 
     t_findings.setStyle(TableStyle(table_styles))
     story.append(t_findings)
-    story.append(Spacer(1, 10))
+    story.append(Spacer(1, 8))
 
     # Audit Scope & Methodological Limitations
-    story.append(Paragraph("3. Scope & Methodological Limitations", h1_style))
+    story.append(Paragraph("4. Scope & Methodological Limitations", h1_style))
     story.append(HRFlowable(width="100%", thickness=1, color=c_accent, spaceBefore=1, spaceAfter=4))
 
     limitations = []
@@ -728,15 +776,16 @@ def generate_pdf_report(
         "should be validated through runtime TLS socket inspection."
     )
 
-    limitations_text = "<br/>".join(limitations)
-    t_limitations = Table([[Paragraph(limitations_text, cell_style)]], colWidths=[532])
+    limitations_text = "<br/><br/>".join(limitations)
+    t_limitations = Table([[Paragraph(limitations_text, ParagraphStyle('Lim', parent=body_style, fontSize=7.5, leading=10.5))]], colWidths=[532])
     t_limitations.setStyle(TableStyle([
         ('BACKGROUND', (0, 0), (-1, -1), colors.HexColor("#f8fafc")),
         ('BOX', (0, 0), (-1, -1), 0.5, colors.HexColor("#cbd5e1")),
-        ('PADDING', (0, 0), (-1, -1), 5)
+        ('PADDING', (0, 0), (-1, -1), 6)
     ]))
     story.append(t_limitations)
 
     # Build PDF with dynamic page numbering
-    doc.build(story, canvasmaker=ReportNumberedCanvas)
+    canvasmaker: Any = ReportNumberedCanvas
+    doc.build(story, canvasmaker=canvasmaker)
     return buffer.getvalue()

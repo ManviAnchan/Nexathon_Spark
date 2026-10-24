@@ -69,7 +69,8 @@ def list_project_scans(project_id: str, db: Session = Depends(get_db)):
             },
             "hndl_count": s.hndl_count,
             "created_at": s.created_at,
-            "completed_at": s.completed_at
+            "completed_at": s.completed_at,
+            "cache_stats": getattr(s, "cache_stats", None)
         })
     return results
 

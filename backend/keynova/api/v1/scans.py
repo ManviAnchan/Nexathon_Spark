@@ -7,11 +7,63 @@ from keynova.core.models import ScanStatusResponse, FindingsListResponse, Findin
 
 router = APIRouter()
 
+from datetime import datetime, timezone
+
+DEMO_SCAN_DATA = {
+    "id": "demo-scan",
+    "project_id": "demo-payment-suite",
+    "status": "completed",
+    "scan_type": "archive",
+    "archive_name": "Keynova Demo Workspace",
+    "total_files": 12,
+    "scanned_files": 12,
+    "coverage_percent": 100.0,
+    "readiness_score": 48,
+    "severity_counts": {
+        "critical": 1,
+        "high": 1,
+        "medium": 1,
+        "low": 1,
+        "quantum_safe": 0
+    },
+    "hndl_count": 2,
+    "created_at": datetime.now(timezone.utc),
+    "completed_at": datetime.now(timezone.utc),
+    "cache_stats": {
+        "hits": 28,
+        "misses": 4,
+        "total_requests": 32,
+        "hit_ratio": 0.875,
+        "bypass_ratio": 0.125
+    }
+}
+
+@router.get("/cache/stats")
+def get_cache_statistics():
+    from keynova.services.cache.ast_cache import get_ast_cache
+    return get_ast_cache().get_stats()
+
+@router.get("/project/{project_id}", response_model=List[ScanStatusResponse])
+def get_scans_by_project(project_id: str, db: Session = Depends(get_db)):
+    from keynova.api.v1.projects import list_project_scans
+    return list_project_scans(project_id, db)
+
+@router.get("/compare/{baseline_id}/{target_id}", response_model=ScanComparisonResponse)
+def compare_two_scans(baseline_id: str, target_id: str, db: Session = Depends(get_db)):
+    return get_scan_diff(scan_id=target_id, baseline_id=baseline_id, db=db)
+
 @router.get("/{scan_id}", response_model=ScanStatusResponse)
 def get_scan(scan_id: str, db: Session = Depends(get_db)):
     scan = db.query(Scan).filter(Scan.id == scan_id).first()
     if not scan:
+        if scan_id.startswith("demo-") or scan_id.startswith("sample-"):
+            res = dict(DEMO_SCAN_DATA)
+            res["id"] = scan_id
+            return res
         raise HTTPException(status_code=404, detail="Scan not found")
+
+    from keynova.services.cache.ast_cache import get_ast_cache
+    live_stats = get_ast_cache().get_stats()
 
     return {
         "id": scan.id,
@@ -32,7 +84,8 @@ def get_scan(scan_id: str, db: Session = Depends(get_db)):
         },
         "hndl_count": scan.hndl_count,
         "created_at": scan.created_at,
-        "completed_at": scan.completed_at
+        "completed_at": scan.completed_at,
+        "cache_stats": getattr(scan, "cache_stats", None) or live_stats
     }
 
 @router.get("/{scan_id}/findings", response_model=FindingsListResponse)
@@ -44,6 +97,20 @@ def list_findings(
 ):
     scan = db.query(Scan).filter(Scan.id == scan_id).first()
     if not scan:
+        if scan_id.startswith("demo-") or scan_id.startswith("sample-"):
+            from keynova.api.v1.export import DEMO_FINDINGS
+            items = []
+            for df in DEMO_FINDINGS:
+                if severity and str(df.get("severity") or "").lower() != severity.lower():
+                    continue
+                item_dict = dict(df)
+                item_dict["scan_id"] = scan_id
+                items.append(item_dict)
+            return {
+                "scan_id": scan_id,
+                "total": len(items),
+                "items": items[:limit]
+            }
         raise HTTPException(status_code=404, detail="Scan not found")
 
     query = db.query(Finding).filter(Finding.scan_id == scan_id)

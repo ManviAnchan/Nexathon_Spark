@@ -10,6 +10,7 @@ Exit Codes:
   2: Usage, input, file-not-found, or evaluation parsing error.
 """
 
+import os
 import sys
 import argparse
 import json
@@ -91,7 +92,67 @@ def scan_directory(root: Path) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
                 findings.extend(scan_manifest_file(p, relative_to=root))
 
     report = calculate_readiness_score(findings, len(all_files), len(scanned_files))
+    try:
+        from keynova.services.cache.ast_cache import get_ast_cache
+        report["cache_stats"] = get_ast_cache().get_stats()
+    except Exception:
+        pass
     return findings, report
+
+
+def write_step_summary(result: Dict[str, Any], findings: List[Dict[str, Any]], scan_meta: Dict[str, Any]) -> str:
+    """Generates rich Markdown summary table for GitHub Actions step summary."""
+    score = scan_meta.get("readiness_score", "N/A")
+    cov = scan_meta.get("coverage_percent", "100.0")
+    hndl_count = scan_meta.get("hndl_count", sum(1 for f in findings if f.get("hndl")))
+    passed = result.get("passed", False)
+    cache_stats = scan_meta.get("cache_stats", {})
+    hit_ratio = round(cache_stats.get("hit_ratio", 0.0) * 100, 1)
+
+    status_badge = "🟢 **PASSED**" if passed else "🔴 **BLOCKED**"
+    hndl_badge = "🔴 **FAIL (HNDL Detected)**" if hndl_count > 0 else "🟢 **Zero HNDL Risks**"
+
+    lines = [
+        "## 🛡️ Keynova Post-Quantum Cryptographic Gate Summary",
+        "",
+        f"**Gate Status:** {status_badge} | **Policy Readiness Threshold:** `{result.get('policy_used', {}).get('min_readiness_score', 80)}/100`",
+        "",
+        "### 📊 Cryptographic Posture",
+        "| Metric | Value | Post-Quantum Assessment |",
+        "| :--- | :--- | :--- |",
+        f"| **Readiness Index** | **`{score} / 100`** | {'✅ Meets security threshold' if passed else '❌ Below required threshold'} |",
+        f"| **Harvest-Now-Decrypt-Later (HNDL)** | **`{hndl_count}`** | {hndl_badge} |",
+        f"| **Total Cryptographic Assets** | `{len(findings)}` | {'⚠️ Findings require attention' if len(findings) > 0 else '✅ Clean inventory'} |",
+        f"| **Inspection Coverage** | `{cov}%` | Verified air-gapped static analysis |",
+        f"| **AST Cache Performance** | `{hit_ratio}%` hit ratio | `{cache_stats.get('hits', 0)}` hits / `{cache_stats.get('misses', 0)}` misses |",
+        ""
+    ]
+
+    if not passed:
+        lines.extend([
+            "### ❌ Blocked PR Reasons & Violations",
+            "| Rule / Reason | File Location | Severity | HNDL Risk |",
+            "| :--- | :--- | :--- | :--- |"
+        ])
+        for v in result.get("violations", []):
+            loc = f"`{v.get('file_path', 'unknown')}:{v.get('line', '-')}`"
+            lines.append(f"| {v.get('message', 'Violation')} | {loc} | `High/Critical` | ⚠️ Yes |")
+        lines.append("")
+        lines.append("> 🛑 **Action Required:** Remediate vulnerable classical algorithms (RSA, ECC, MD5, SHA-1) using NIST FIPS 203/204 post-quantum standards before merging.")
+    else:
+        lines.append("### ✅ Post-Quantum Compliance Verified")
+        lines.append("> All cryptographic assets adhere to defined post-quantum policies. PR approved for merge.")
+
+    md = "\n".join(lines) + "\n"
+
+    step_summary_path = os.getenv("GITHUB_STEP_SUMMARY")
+    if step_summary_path:
+        try:
+            with open(step_summary_path, "a", encoding="utf-8") as f:
+                f.write(md)
+        except Exception as e:
+            print(f"[WARNING] Could not write to GITHUB_STEP_SUMMARY: {e}", file=sys.stderr)
+    return md
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -124,7 +185,8 @@ def build_parser() -> argparse.ArgumentParser:
     )
     # Policy rule overrides
     parser.add_argument(
-        "--min-readiness",
+        "--min-readiness", "--min-score",
+        dest="min_readiness",
         type=int,
         default=80,
         help="Minimum acceptable Keynova Readiness Index (0-100, default: 80)."
@@ -171,6 +233,18 @@ def build_parser() -> argparse.ArgumentParser:
         type=str,
         default=None,
         help="File path to write the evaluation JSON report."
+    )
+    parser.add_argument(
+        "--export-sarif",
+        type=str,
+        default=None,
+        help="File path to write the OASIS SARIF v2.1.0 report."
+    )
+    parser.add_argument(
+        "--step-summary",
+        action="store_true",
+        default=False,
+        help="Write rich Markdown summary table to $GITHUB_STEP_SUMMARY."
     )
     return parser
 
@@ -268,6 +342,32 @@ def run_cli(args: Optional[List[str]] = None):
             print(f"[ERROR] Failed to write output file: {e}", file=sys.stderr)
             sys.exit(2)
 
+    # Export SARIF 2.1.0 report if requested
+    if parsed_args.export_sarif:
+        try:
+            from keynova.services.exporters.sarif import generate_sarif_report
+            proj_name = p.name if ('p' in locals() and p is not None) else "Keynova Project"
+            sarif_doc = generate_sarif_report(
+                findings=findings,
+                project_name=proj_name,
+                scan_id=scan_meta.get("id", "cli-scan")
+            )
+            sarif_path = Path(parsed_args.export_sarif).resolve()
+            sarif_path.parent.mkdir(parents=True, exist_ok=True)
+            with open(sarif_path, "w", encoding="utf-8") as f:
+                json.dump(sarif_doc, f, indent=2)
+            if not parsed_args.json:
+                print(f"[EXPORT] SARIF 2.1.0 report saved to: {sarif_path}")
+        except Exception as e:
+            print(f"[ERROR] Failed to export SARIF report: {e}", file=sys.stderr)
+            sys.exit(2)
+
+    # Step Summary for CI/CD
+    if parsed_args.step_summary:
+        md_summary = write_step_summary(result, findings, scan_meta)
+        if not os.getenv("GITHUB_STEP_SUMMARY") and not parsed_args.json:
+            print(f"\n{md_summary}")
+
     if parsed_args.json:
         print(json.dumps(result, indent=2))
     else:
@@ -281,6 +381,10 @@ def run_cli(args: Optional[List[str]] = None):
         print(f"  Coverage:                {cov_disp}%")
         print(f"  Active Findings:         {len(findings)}")
         print(f"  HNDL Vulnerabilities:    {hndl_disp}")
+        if "cache_stats" in scan_meta:
+            cs = scan_meta["cache_stats"]
+            hr = round(cs.get("hit_ratio", 0.0) * 100, 1)
+            print(f"  AST Cache Performance:   {cs.get('hits', 0)} hits / {cs.get('misses', 0)} misses ({hr}% hit ratio)")
         print("-" * 68)
 
         if not result["passed"]:

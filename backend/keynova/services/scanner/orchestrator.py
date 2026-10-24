@@ -1,11 +1,20 @@
+import sys
 from pathlib import Path
+
+# Ensure backend root is on sys.path
+BACKEND_DIR = Path(__file__).resolve().parent.parent.parent.parent
+if str(BACKEND_DIR) not in sys.path:
+    sys.path.insert(0, str(BACKEND_DIR))
+
 from datetime import datetime, timezone
 from sqlalchemy.orm import Session
-from typing import Optional, List, Dict, Any
+from typing import Optional, List, Dict, Any, Sequence, Union
 
 from keynova.core.database import Scan, Finding, ScanComparison
 from keynova.services.scanner.python_ast import scan_python_file
 from keynova.services.scanner.manifests import scan_manifest_file
+from keynova.services.scanner.diff_filter import filter_crypto_affected_files, get_git_changed_files
+from keynova.services.cache.ast_cache import get_ast_cache
 
 try:
     from keynova.services.intelligence.scoring import calculate_readiness_score
@@ -95,49 +104,112 @@ def execute_scan(
     db: Session,
     scan_id: str,
     source_path: Path,
-    baseline_scan_id: Optional[str] = None
-) -> Scan:
+    baseline_scan_id: Optional[str] = None,
+    incremental: bool = False
+) -> Any:
     """Orchestrates source code traversal, AST analysis, scoring, and DB persistence."""
-    scan = db.query(Scan).filter(Scan.id == scan_id).first()
+    scan: Any = db.query(Scan).filter(Scan.id == scan_id).first()
     if not scan:
         return None
 
     scan.status = "analyzing"
     db.commit()
 
-    all_files = []
-    scanned_files = []
+    all_files: List[Path] = []
+    scanned_files: List[Path] = []
     findings_data: List[Dict[str, Any]] = []
+    total_count: int = 0
+    scanned_count: int = 0
+    score_report: Dict[str, Any] = {
+        "readiness_score": 100,
+        "coverage_percent": 100.0,
+        "severity_counts": {
+            "critical": 0,
+            "high": 0,
+            "medium": 0,
+            "low": 0,
+            "quantum_safe": 0
+        },
+        "hndl_count": 0,
+        "total_penalty": 0.0
+    }
 
-    # 1. Directory Traversal
-    for path in source_path.rglob("*"):
-        if any(part in IGNORE_DIRS for part in path.parts):
-            continue
-        if path.is_file():
-            all_files.append(path)
-            
-            # 2. Python AST Analysis
-            if path.suffix == ".py":
-                scanned_files.append(path)
-                py_findings = scan_python_file(path, relative_to=source_path)
-                for f in py_findings:
-                    findings_data.append(f.to_dict())
+    # Check for incremental bypass if baseline provided and incremental enabled
+    bypass_scan = False
+    if incremental and baseline_scan_id:
+        baseline_scan = db.query(Scan).filter(Scan.id == baseline_scan_id).first()
+        if baseline_scan:
+            changed_files: Sequence[Union[str, Path]] = get_git_changed_files(source_path)
+            crypto_affected = filter_crypto_affected_files(changed_files, source_path)
+            # If zero files in the commit touched cryptographic surface, reuse previous findings
+            if len(crypto_affected) == 0:
+                bypass_scan = True
+                for bf in baseline_scan.findings:
+                    findings_data.append({
+                        "fingerprint": bf.fingerprint,
+                        "file_path": bf.file_path,
+                        "line_start": bf.line_start,
+                        "line_end": bf.line_end,
+                        "code_snippet": bf.code_snippet,
+                        "asset_type": bf.asset_type,
+                        "algorithm": bf.algorithm,
+                        "usage": bf.usage,
+                        "library": bf.library,
+                        "key_size": bf.key_size,
+                        "severity": bf.severity,
+                        "quantum_status": bf.quantum_status,
+                        "hndl": bf.hndl,
+                        "confidence": bf.confidence,
+                        "rule_id": bf.rule_id,
+                        "evidence": bf.evidence,
+                    })
+                total_count = baseline_scan.total_files
+                scanned_count = baseline_scan.scanned_files
+                score_report = {
+                    "readiness_score": baseline_scan.readiness_score,
+                    "coverage_percent": baseline_scan.coverage_percent,
+                    "severity_counts": {
+                        "critical": baseline_scan.critical_count,
+                        "high": baseline_scan.high_count,
+                        "medium": baseline_scan.medium_count,
+                        "low": baseline_scan.low_count,
+                        "quantum_safe": baseline_scan.quantum_safe_count
+                    },
+                    "hndl_count": baseline_scan.hndl_count,
+                    "total_penalty": 0.0,
+                    "incremental_bypass": True
+                }
 
-            # 3. Dependency Manifest Analysis
-            elif path.name.lower() in ["requirements.txt", "package.json"]:
-                scanned_files.append(path)
-                manifest_findings = scan_manifest_file(path, relative_to=source_path)
-                findings_data.extend(manifest_findings)
+    if not bypass_scan:
+        # 1. Directory Traversal
+        for path in source_path.rglob("*"):
+            if any(part in IGNORE_DIRS for part in path.parts):
+                continue
+            if path.is_file():
+                all_files.append(path)
+                
+                # 2. Python AST Analysis
+                if path.suffix == ".py":
+                    scanned_files.append(path)
+                    py_findings = scan_python_file(path, relative_to=source_path)
+                    for f in py_findings:
+                        findings_data.append(f.to_dict())
 
-    total_count = len(all_files)
-    scanned_count = len(scanned_files)
+                # 3. Dependency Manifest Analysis
+                elif path.name.lower() in ["requirements.txt", "package.json"]:
+                    scanned_files.append(path)
+                    manifest_findings = scan_manifest_file(path, relative_to=source_path)
+                    findings_data.extend(manifest_findings)
 
-    # 4. Calculate Keynova Readiness Index
-    score_report = calculate_readiness_score(
-        findings=findings_data,
-        total_files=total_count,
-        scanned_files=scanned_count
-    )
+        total_count = len(all_files)
+        scanned_count = len(scanned_files)
+
+        # 4. Calculate Keynova Readiness Index
+        score_report = calculate_readiness_score(
+            findings=findings_data,
+            total_files=total_count,
+            scanned_files=scanned_count
+        )
 
     # 5. Persist Findings to Database
     for f in findings_data:
@@ -148,33 +220,36 @@ def execute_scan(
             line_start=f["line_start"],
             line_end=f["line_end"],
             code_snippet=f["code_snippet"],
-            asset_type=f["asset_type"],
-            algorithm=f["algorithm"],
-            usage=f["usage"],
+            asset_type=f.get("asset_type", "source_code"),
+            algorithm=f.get("algorithm", "Unknown"),
+            usage=f.get("usage", "encryption"),
             library=f.get("library"),
             key_size=f.get("key_size"),
-            severity=f["severity"],
-            quantum_status=f["quantum_status"],
-            hndl=f["hndl"],
-            confidence=f["confidence"],
-            rule_id=f["rule_id"],
-            evidence=f["evidence"],
+            severity=f.get("severity", "low"),
+            quantum_status=f.get("quantum_status", "quantum_vulnerable"),
+            hndl=bool(f.get("hndl", False)),
+            confidence=float(f.get("confidence", 1.0)),
+            rule_id=f.get("rule_id", "UNKNOWN"),
+            evidence=f.get("evidence", ""),
             metadata_json={}
         )
         db.add(finding_obj)
 
     # 6. Update Scan Record
+    raw_sev = score_report.get("severity_counts")
+    sev_counts: Dict[str, Any] = raw_sev if isinstance(raw_sev, dict) else {}
+
     scan.status = "completed"
     scan.total_files = total_count
     scan.scanned_files = scanned_count
-    scan.readiness_score = score_report["readiness_score"]
-    scan.coverage_percent = score_report["coverage_percent"]
-    scan.critical_count = score_report["severity_counts"]["critical"]
-    scan.high_count = score_report["severity_counts"]["high"]
-    scan.medium_count = score_report["severity_counts"]["medium"]
-    scan.low_count = score_report["severity_counts"]["low"]
-    scan.quantum_safe_count = score_report["severity_counts"]["quantum_safe"]
-    scan.hndl_count = score_report["hndl_count"]
+    scan.readiness_score = int(score_report.get("readiness_score", 0))
+    scan.coverage_percent = float(score_report.get("coverage_percent", 0.0))
+    scan.critical_count = int(sev_counts.get("critical", 0))
+    scan.high_count = int(sev_counts.get("high", 0))
+    scan.medium_count = int(sev_counts.get("medium", 0))
+    scan.low_count = int(sev_counts.get("low", 0))
+    scan.quantum_safe_count = int(sev_counts.get("quantum_safe", 0))
+    scan.hndl_count = int(score_report.get("hndl_count", 0))
     scan.completed_at = datetime.now(timezone.utc)
     db.commit()
 
@@ -221,5 +296,10 @@ def execute_scan(
             )
             db.add(comp_record)
             db.commit()
+
+    try:
+        scan.cache_stats = get_ast_cache().get_stats()
+    except Exception:
+        scan.cache_stats = {"hits": 0, "misses": 0, "total_requests": 0, "hit_ratio": 0.0, "bypass_ratio": 0.0}
 
     return scan

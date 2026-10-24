@@ -11,6 +11,14 @@ router = APIRouter()
 def get_crypto_graph(scan_id: str, db: Session = Depends(get_db)):
     scan = db.query(Scan).filter(Scan.id == scan_id).first()
     if not scan:
+        if scan_id.startswith("demo-") or scan_id.startswith("sample-"):
+            from keynova.api.v1.export import DEMO_FINDINGS
+            graph_data = build_dependency_graph("Keynova Demo Workspace", DEMO_FINDINGS)
+            return {
+                "scan_id": scan_id,
+                "nodes": graph_data["nodes"],
+                "edges": graph_data["edges"]
+            }
         raise HTTPException(status_code=404, detail="Scan not found")
 
     findings = [

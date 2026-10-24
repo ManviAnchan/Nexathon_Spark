@@ -1,12 +1,13 @@
-import React, { useState } from 'react';
-import { X, UploadCloud, FileCode2, CheckCircle2, ShieldAlert, Loader2, ScanLine, ArrowRight } from 'lucide-react';
+import React, { useEffect, useState } from 'react';
+import { X, UploadCloud, FileCode2, Loader2, ScanLine, ArrowRight } from 'lucide-react';
 import { uploadArchive } from '../lib/api';
 
 interface UploadModalProps {
   isOpen: boolean;
   onClose: () => void;
   projectId: string;
-  onScanCompleted: (scanId: string) => void;
+  onEnsureProject: (archiveName: string) => Promise<string>;
+  onScanCompleted: (scanId: string, baselineScanId: string | null) => void;
   baselineScanId?: string | null;
 }
 
@@ -14,6 +15,7 @@ export const UploadModal: React.FC<UploadModalProps> = ({
   isOpen,
   onClose,
   projectId,
+  onEnsureProject,
   onScanCompleted,
   baselineScanId
 }) => {
@@ -21,6 +23,10 @@ export const UploadModal: React.FC<UploadModalProps> = ({
   const [isProcessing, setIsProcessing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [compareWithBaseline, setCompareWithBaseline] = useState(Boolean(baselineScanId));
+
+  useEffect(() => {
+    setCompareWithBaseline(Boolean(baselineScanId));
+  }, [baselineScanId]);
 
   if (!isOpen) return null;
 
@@ -38,37 +44,16 @@ export const UploadModal: React.FC<UploadModalProps> = ({
     setIsProcessing(true);
     setError(null);
     try {
+      const targetProjectId = projectId || await onEnsureProject(file.name);
       const result = await uploadArchive(
-        projectId,
+        targetProjectId,
         file,
         compareWithBaseline ? (baselineScanId || undefined) : undefined
       );
-      onScanCompleted(result.scan_id);
+      onScanCompleted(result.scan_id, compareWithBaseline ? baselineScanId || null : null);
       onClose();
-    } catch (err: any) {
-      setError(err.message || 'The archive could not be scanned.');
-    } finally {
-      setIsProcessing(false);
-    }
-  };
-
-  const loadPreset = async (kind: 'vulnerable' | 'remediated') => {
-    setIsProcessing(true);
-    setError(null);
-    const filename = kind === 'vulnerable' ? 'vulnerable_payment_suite.zip' : 'remediated_payment_suite.zip';
-    try {
-      const response = await fetch(`/test-fixtures/${filename}`);
-      if (!response.ok) throw new Error('Demo archive is unavailable. Choose a ZIP from your computer instead.');
-      const file = new File([await response.blob()], filename, { type: 'application/zip' });
-      const result = await uploadArchive(
-        projectId,
-        file,
-        compareWithBaseline ? (baselineScanId || undefined) : undefined
-      );
-      onScanCompleted(result.scan_id);
-      onClose();
-    } catch (err: any) {
-      setError(err.message || 'The sample archive could not be scanned.');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'The archive could not be scanned.');
     } finally {
       setIsProcessing(false);
     }
@@ -118,55 +103,6 @@ export const UploadModal: React.FC<UploadModalProps> = ({
 
         {/* Body */}
         <div className="p-6 space-y-4">
-          {/* Quickstart Presets */}
-          <div>
-            <div className="flex items-center justify-between text-[11px] font-semibold text-zinc-500 dark:text-zinc-400 uppercase tracking-wider mb-2">
-              <span>Quick Start Fixtures</span>
-              <span className="text-[10px] font-normal normal-case text-zinc-400">Pre-packaged test repositories</span>
-            </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-              <button
-                type="button"
-                onClick={() => loadPreset('vulnerable')}
-                disabled={isProcessing}
-                className="flex items-start gap-2.5 p-3 rounded-xl border border-red-200/80 dark:border-red-950/80 bg-red-50/40 dark:bg-red-950/20 hover:bg-red-50 dark:hover:bg-red-950/40 text-left transition-all group"
-              >
-                <div className="p-1.5 rounded-lg bg-red-100 dark:bg-red-900/40 text-red-600 dark:text-red-400 shrink-0">
-                  <ShieldAlert className="w-4 h-4" />
-                </div>
-                <div className="min-w-0 flex-1">
-                  <div className="text-xs font-semibold text-zinc-900 dark:text-zinc-100 group-hover:text-red-600 dark:group-hover:text-red-400 flex items-center justify-between">
-                    <span>Vulnerable Suite</span>
-                    <span className="text-[11px] opacity-70">↗</span>
-                  </div>
-                  <p className="text-[11px] text-zinc-500 dark:text-zinc-400 mt-0.5 leading-snug">
-                    RSA-2048 & ECC with HNDL vulnerabilities
-                  </p>
-                </div>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => loadPreset('remediated')}
-                disabled={isProcessing}
-                className="flex items-start gap-2.5 p-3 rounded-xl border border-emerald-200/80 dark:border-emerald-950/80 bg-emerald-50/40 dark:bg-emerald-950/20 hover:bg-emerald-50 dark:hover:bg-emerald-950/40 text-left transition-all group"
-              >
-                <div className="p-1.5 rounded-lg bg-emerald-100 dark:bg-emerald-900/40 text-emerald-600 dark:text-emerald-400 shrink-0">
-                  <CheckCircle2 className="w-4 h-4" />
-                </div>
-                <div className="min-w-0 flex-1">
-                  <div className="text-xs font-semibold text-zinc-900 dark:text-zinc-100 group-hover:text-emerald-600 dark:group-hover:text-emerald-400 flex items-center justify-between">
-                    <span>Remediated Suite</span>
-                    <span className="text-[11px] opacity-70">↗</span>
-                  </div>
-                  <p className="text-[11px] text-zinc-500 dark:text-zinc-400 mt-0.5 leading-snug">
-                    Migrated to FIPS 203 ML-KEM & FIPS 204
-                  </p>
-                </div>
-              </button>
-            </div>
-          </div>
-
           {/* Drag & Drop Upload Zone */}
           <div>
             <div className="text-[11px] font-semibold text-zinc-500 dark:text-zinc-400 uppercase tracking-wider mb-2">

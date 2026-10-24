@@ -1,25 +1,25 @@
 import React, { useState, useEffect } from 'react';
-import { 
-  Cpu, 
-  Sparkles, 
-  Play, 
-  Copy, 
-  Check, 
-  ShieldAlert, 
-  ShieldCheck, 
-  AlertTriangle, 
-  ArrowRight, 
-  Code2, 
-  Clock, 
-  Layers, 
+import {
+  Cpu,
+  Sparkles,
+  Play,
+  Copy,
+  Check,
+  ShieldAlert,
+  ShieldCheck,
+  AlertTriangle,
+  ArrowRight,
+  Code2,
+  Clock,
+  Layers,
   RefreshCw,
   Zap,
   Info
 } from 'lucide-react';
 import { runCryptoBenchmark, remediateFinding } from '../lib/api';
-import { BenchmarkResult, Remediation } from '../types';
+import { BenchmarkResult, Finding, Remediation } from '../types';
 
-export const PlaygroundScreen: React.FC = () => {
+export const PlaygroundScreen: React.FC<{ findings: Finding[]; enabled: boolean }> = ({ findings, enabled }) => {
   // Benchmark State
   const [selectedAlg, setSelectedAlg] = useState('ML-KEM-768');
   const [iterations, setIterations] = useState(10);
@@ -28,65 +28,28 @@ export const PlaygroundScreen: React.FC = () => {
   const [benchError, setBenchError] = useState<string | null>(null);
 
   // Remediation State
-  const sampleFindings = [
-    {
-      id: 'sample-rsa-01',
-      title: 'RSA-2048 Public Key Exchange',
-      algorithm: 'RSA',
-      file_path: 'backend/crypto_service.py',
-      line_start: 9,
-      code_snippet: 'self.private_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)',
-      usage: 'key_generation',
-      severity: 'critical' as const,
-      asset_type: 'source_code'
-    },
-    {
-      id: 'sample-ecc-02',
-      title: 'ECC SECP256R1 JWT Signing',
-      algorithm: 'ECC-SECP256R1',
-      file_path: 'backend/auth.py',
-      line_start: 7,
-      code_snippet: 'self.signing_key = ec.generate_private_key(ec.SECP256R1())',
-      usage: 'token_signing',
-      severity: 'high' as const,
-      asset_type: 'source_code'
-    },
-    {
-      id: 'sample-md5-03',
-      title: 'MD5 Legacy Password Hashing',
-      algorithm: 'MD5',
-      file_path: 'backend/hasher.py',
-      line_start: 9,
-      code_snippet: 'return hashlib.md5(f"{salt}:{password}".encode()).hexdigest()',
-      usage: 'password_hashing',
-      severity: 'low' as const,
-      asset_type: 'source_code'
-    },
-    {
-      id: 'sample-manifest-04',
-      title: 'Legacy Cryptographic Dependency',
-      algorithm: 'DES/RSA/RC4',
-      file_path: 'manifests/requirements.txt',
-      line_start: 1,
-      code_snippet: 'pycryptodome==3.10.1',
-      usage: 'dependency',
-      severity: 'low' as const,
-      asset_type: 'manifest',
-      library: 'pycryptodome'
-    }
-  ];
-
-  const [selectedFinding, setSelectedFinding] = useState(sampleFindings[0]);
+  const [selectedFinding, setSelectedFinding] = useState<Finding | null>(findings[0] || null);
   const [remediation, setRemediation] = useState<Remediation | null>(null);
   const [isRemediating, setIsRemediating] = useState(false);
   const [remediateError, setRemediateError] = useState<string | null>(null);
   const [copiedDiff, setCopiedDiff] = useState(false);
 
-  // Run initial benchmark on mount
+  // Run the benchmark only when this scan-backed screen is opened.
   useEffect(() => {
-    handleRunBenchmark('ML-KEM-768', 10);
-    handleGenerateRemediation(sampleFindings[0]);
-  }, []);
+    if (enabled) {
+      handleRunBenchmark('ML-KEM-768', 10);
+    } else {
+      setBenchmarkResult(null);
+      setBenchError(null);
+      setRemediation(null);
+      setRemediateError(null);
+    }
+  }, [enabled]);
+
+  useEffect(() => {
+    setSelectedFinding(findings[0] || null);
+    setRemediation(null);
+  }, [findings]);
 
   const handleRunBenchmark = async (alg: string, iters: number) => {
     setIsBenchmarking(true);
@@ -101,7 +64,7 @@ export const PlaygroundScreen: React.FC = () => {
     }
   };
 
-  const handleGenerateRemediation = async (finding: typeof sampleFindings[0]) => {
+  const handleGenerateRemediation = async (finding: Finding) => {
     setIsRemediating(true);
     setRemediateError(null);
     try {
@@ -156,7 +119,7 @@ export const PlaygroundScreen: React.FC = () => {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+      {enabled ? <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
         {/* Left Column: PQC Live Benchmarking Lab */}
         <div className="lg:col-span-5 space-y-4">
           <div className="enterprise-card p-5 rounded-xl space-y-4">
@@ -183,6 +146,7 @@ export const PlaygroundScreen: React.FC = () => {
                   return (
                     <button
                       key={alg.id}
+                      disabled={!enabled || isBenchmarking}
                       onClick={() => {
                         setSelectedAlg(alg.id);
                         handleRunBenchmark(alg.id, iterations);
@@ -222,6 +186,7 @@ export const PlaygroundScreen: React.FC = () => {
                   min="1"
                   max="50"
                   value={iterations}
+                  disabled={!enabled}
                   onChange={(e) => setIterations(Number(e.target.value))}
                   className="w-full h-1.5 bg-zinc-800 rounded-lg appearance-none cursor-pointer accent-emerald-500"
                 />
@@ -229,7 +194,7 @@ export const PlaygroundScreen: React.FC = () => {
 
               <button
                 onClick={() => handleRunBenchmark(selectedAlg, iterations)}
-                disabled={isBenchmarking}
+                disabled={!enabled || isBenchmarking}
                 className="px-3.5 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-zinc-950 font-bold text-xs flex items-center gap-1.5 transition-colors disabled:opacity-50 shrink-0 mt-3"
               >
                 {isBenchmarking ? (
@@ -335,8 +300,8 @@ export const PlaygroundScreen: React.FC = () => {
                 Select Finding Vulnerability to Remediate
               </label>
               <div className="grid grid-cols-2 gap-2">
-                {sampleFindings.map((finding) => {
-                  const isSelected = selectedFinding.id === finding.id;
+                {findings.map((finding) => {
+                  const isSelected = selectedFinding?.id === finding.id;
                   return (
                     <button
                       key={finding.id}
@@ -350,7 +315,7 @@ export const PlaygroundScreen: React.FC = () => {
                           : 'bg-zinc-950/60 border-zinc-800/80 text-zinc-400 hover:text-zinc-200 hover:border-zinc-700'
                       }`}
                     >
-                      <div className="font-bold truncate">{finding.title}</div>
+                      <div className="font-bold truncate">{finding.algorithm} · {finding.usage}</div>
                       <div className="text-[10px] text-zinc-500 font-mono truncate mt-0.5">
                         {finding.file_path}:{finding.line_start}
                       </div>
@@ -361,7 +326,7 @@ export const PlaygroundScreen: React.FC = () => {
             </div>
 
             {/* Current Finding Snippet */}
-            <div className="p-3 rounded-lg bg-zinc-950 border border-zinc-800 space-y-1.5">
+            {selectedFinding ? <div className="p-3 rounded-lg bg-zinc-950 border border-zinc-800 space-y-1.5">
               <div className="flex items-center justify-between text-[11px] text-zinc-400 font-mono">
                 <span>Vulnerable AST Invocations: {selectedFinding.file_path}</span>
                 <span className="uppercase text-red-400 font-semibold">{selectedFinding.severity}</span>
@@ -369,7 +334,7 @@ export const PlaygroundScreen: React.FC = () => {
               <pre className="font-mono text-xs text-red-300/90 overflow-x-auto p-2 rounded bg-zinc-900/80 border border-zinc-800/80">
                 <code>{selectedFinding.code_snippet}</code>
               </pre>
-            </div>
+            </div> : <div className="p-3 rounded-lg bg-zinc-950 border border-zinc-800 text-xs text-zinc-400">No findings in this scan.</div>}
 
             {remediateError && (
               <div className="p-3 rounded-lg bg-red-950/40 border border-red-900/50 text-red-300 text-xs flex items-center gap-2">
@@ -473,7 +438,13 @@ export const PlaygroundScreen: React.FC = () => {
             )}
           </div>
         </div>
-      </div>
+      </div> : (
+        <div className="enterprise-card flex min-h-[280px] items-center justify-center rounded-xl p-6 text-center">
+          <p className="max-w-md text-sm text-zinc-500 dark:text-zinc-400">
+            Upload a ZIP archive to populate the benchmark and remediation workspace with scan results.
+          </p>
+        </div>
+      )}
     </div>
   );
 };

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Sidebar } from './components/Sidebar';
 import { Dashboard } from './screens/Dashboard';
 import { FindingsExplorer } from './screens/FindingsExplorer';
@@ -8,20 +8,30 @@ import { PlaygroundScreen } from './screens/PlaygroundScreen';
 import { UploadModal } from './components/UploadModal';
 import { LoginScreen } from './components/LoginScreen';
 import { TrustAuditModal } from './components/TrustAuditModal';
+import { DisplayScaleControl } from './components/DisplayScaleControl';
 import { Project, ScanStatus, Finding } from './types';
 import { fetchProjects, createProject, fetchScan, fetchFindings, fetchProjectScans } from './lib/api';
 
 export const App: React.FC = () => {
+  const uploadedScanIdsKey = 'keynova_uploaded_scan_ids_v2';
+  const activeProjectIdKey = 'keynova_active_project_id';
+  const userProjectIdsKey = 'keynova_user_project_ids';
   const [theme, setTheme] = useState<'light' | 'dark'>(() =>
     localStorage.getItem('keynova_theme') === 'dark' ? 'dark' : 'light',
   );
+  const [displayScale, setDisplayScale] = useState(() => {
+    const saved = Number(localStorage.getItem('keynova_display_scale'));
+    return Number.isFinite(saved) && saved >= 25 && saved <= 250 && saved % 5 === 0 ? saved : 100;
+  });
   const [activeScreen, setActiveScreen] = useState('dashboard');
   const [projects, setProjects] = useState<Project[]>([]);
   const [activeProject, setActiveProject] = useState<Project | null>(null);
   const [currentScan, setCurrentScan] = useState<ScanStatus | null>(null);
   const [baselineScan, setBaselineScan] = useState<ScanStatus | null>(null);
+  const [availableScans, setAvailableScans] = useState<ScanStatus[]>([]);
   const [findings, setFindings] = useState<Finding[]>([]);
-  const [showDemoData, setShowDemoData] = useState(false);
+  const [appError, setAppError] = useState<string | null>(null);
+  const projectLoadRequest = useRef(0);
 
   // Sync theme with HTML document element so Tailwind dark: classes and CSS vars apply
   useEffect(() => {
@@ -35,15 +45,7 @@ export const App: React.FC = () => {
     localStorage.setItem('keynova_theme', theme);
   }, [theme]);
 
-  const trackSurfacePointer = (event: React.PointerEvent<HTMLElement>) => {
-    const surface = (event.target as HTMLElement).closest<HTMLElement>(
-      '.dashboard-metric, .dashboard-panel, .enterprise-card',
-    );
-    if (!surface) return;
-    const bounds = surface.getBoundingClientRect();
-    surface.style.setProperty('--pointer-x', `${event.clientX - bounds.left}px`);
-    surface.style.setProperty('--pointer-y', `${event.clientY - bounds.top}px`);
-  };
+
   const [isUploadOpen, setIsUploadOpen] = useState(false);
   const [isTrustOpen, setIsTrustOpen] = useState(false);
 
@@ -60,6 +62,14 @@ export const App: React.FC = () => {
 
   const handleLogout = () => {
     localStorage.removeItem('keynova_analyst');
+    localStorage.removeItem(activeProjectIdKey);
+    localStorage.removeItem(uploadedScanIdsKey);
+    localStorage.removeItem(userProjectIdsKey);
+    setCurrentScan(null);
+    setBaselineScan(null);
+    setAvailableScans([]);
+    setFindings([]);
+    setActiveProject(null);
     setUser(null);
   };
 
@@ -67,90 +77,138 @@ export const App: React.FC = () => {
     setTheme((current) => (current === 'light' ? 'dark' : 'light'));
   };
 
+  const selectProject = async (project: Project | null) => {
+    const requestId = ++projectLoadRequest.current;
+    setAppError(null);
+    setActiveProject(project);
+    setCurrentScan(null);
+    setBaselineScan(null);
+    setAvailableScans([]);
+    setFindings([]);
+    if (!project) {
+      localStorage.removeItem(activeProjectIdKey);
+      return;
+    }
+
+    localStorage.setItem(activeProjectIdKey, project.id);
+    try {
+      const uploadedScanIds = JSON.parse(localStorage.getItem(uploadedScanIdsKey) || '[]') as string[];
+      const scans = (await fetchProjectScans(project.id)).filter((scan) => uploadedScanIds.includes(scan.id));
+      if (requestId !== projectLoadRequest.current) return;
+      setAvailableScans(scans);
+      const latestScan = scans[0] || null;
+      setCurrentScan(latestScan);
+      setBaselineScan(scans[1] || null);
+      if (!latestScan) return;
+      const fData = await fetchFindings(latestScan.id);
+      if (requestId === projectLoadRequest.current) setFindings(fData.items);
+    } catch (error) {
+      if (requestId === projectLoadRequest.current) {
+        console.error('Failed to load project scans:', error);
+        setAppError(error instanceof Error ? error.message : 'Could not load this workspace’s scans.');
+      }
+    }
+  };
+
+  const createWorkspace = async (name: string) => {
+    const project = await createProject(name.trim());
+    const userProjectIds = JSON.parse(localStorage.getItem(userProjectIdsKey) || '[]') as string[];
+    if (!userProjectIds.includes(project.id)) {
+      localStorage.setItem(userProjectIdsKey, JSON.stringify([...userProjectIds, project.id]));
+    }
+    setProjects((existing) => [project, ...existing.filter((item) => item.id !== project.id)]);
+    await selectProject(project);
+  };
+
   useEffect(() => {
     if (!user) return;
     async function init() {
       try {
-        let projs = await fetchProjects();
-        if (projs.length === 0) {
-          const newProj = await createProject('Quantum Vault Demo', 'https://github.com/keynova/quantum-vault.git');
-          projs = [newProj];
-        }
+        const projs = await fetchProjects();
         setProjects(projs);
-        const p = projs[0];
-        setActiveProject(p);
-        setShowDemoData(false);
-
-        // Fetch existing scans from database
-        const scans = await fetchProjectScans(p.id);
-        if (scans.length > 0) {
-          const latest = scans[0];
-          setCurrentScan(latest);
-          const fData = await fetchFindings(latest.id);
-          setFindings(fData.items);
-          if (scans.length > 1) {
-            setBaselineScan(scans[scans.length - 1]);
-          }
-        }
+        setActiveProject(projs[0] || null);
+        // Every time the app is open, reset scan score and findings
+        setCurrentScan(null);
+        setBaselineScan(null);
+        setAvailableScans([]);
+        setFindings([]);
       } catch (e) {
         console.error('Initialization error:', e);
-        const demoProject: Project = {
-          id: 'demo-payment-suite',
-          name: 'sample-payment-suite',
-          repository_url: '',
-          created_at: new Date().toISOString(),
-        };
-        const demoScan: ScanStatus = {
-          id: 'sample-vulnerable-scan',
-          project_id: demoProject.id,
-          status: 'completed',
-          scan_type: 'archive',
-          archive_name: demoProject.name,
-          total_files: 12,
-          scanned_files: 12,
-          coverage_percent: 100,
-          readiness_score: 46,
-          severity_counts: { critical: 1, high: 2, medium: 1, low: 0, quantum_safe: 0 },
-          hndl_count: 1,
-          created_at: new Date().toISOString(),
-        };
-        const demoFindings: Finding[] = [
-          { id: 'demo-1', scan_id: demoScan.id, fingerprint: 'rsa-keygen', file_path: 'src/crypto/rsa.py', line_start: 42, line_end: 42, code_snippet: 'RSA.generate(2048)', asset_type: 'key', algorithm: 'RSA-2048', usage: 'key_generation', library: 'pycryptodome', key_size: 2048, severity: 'critical', quantum_status: 'vulnerable', hndl: true, confidence: 0.99, rule_id: 'PQC-RSA-001', evidence: 'RSA key generation detected' },
-          { id: 'demo-2', scan_id: demoScan.id, fingerprint: 'rsa-cipher', file_path: 'src/payments/encrypt.py', line_start: 18, line_end: 18, code_snippet: 'PKCS1_OAEP.new(key)', asset_type: 'cipher', algorithm: 'RSA-OAEP', usage: 'key_encapsulation', library: 'pycryptodome', severity: 'high', quantum_status: 'vulnerable', hndl: true, confidence: 0.93, rule_id: 'PQC-RSA-002', evidence: 'RSA encryption detected' },
-          { id: 'demo-3', scan_id: demoScan.id, fingerprint: 'ecdh', file_path: 'src/auth/session.py', line_start: 76, line_end: 76, code_snippet: 'ec.generate_private_key()', asset_type: 'key', algorithm: 'ECDH P-256', usage: 'key_exchange', library: 'cryptography', key_size: 256, severity: 'high', quantum_status: 'vulnerable', hndl: false, confidence: 0.91, rule_id: 'PQC-ECC-001', evidence: 'Elliptic curve key exchange detected' },
-          { id: 'demo-4', scan_id: demoScan.id, fingerprint: 'sha256', file_path: 'src/utils/signing.py', line_start: 21, line_end: 21, code_snippet: 'hashes.SHA256()', asset_type: 'hash', algorithm: 'SHA-256', usage: 'digest', library: 'cryptography', severity: 'medium', quantum_status: 'quantum_safe', hndl: false, confidence: 0.86, rule_id: 'PQC-HASH-001', evidence: 'Hash usage detected' },
-        ];
-        setProjects([demoProject]);
-        setActiveProject(demoProject);
-        setCurrentScan(demoScan);
-        setFindings(demoFindings);
-        setShowDemoData(true);
+        setAppError(e instanceof Error ? e.message : 'Could not initialize the workspace.');
+        setProjects([]);
+        setActiveProject(null);
+        setCurrentScan(null);
+        setBaselineScan(null);
+        setAvailableScans([]);
+        setFindings([]);
       }
     }
     init();
   }, [user]);
 
   const loadScanData = async (scanId: string) => {
+    const requestId = projectLoadRequest.current;
+    setAppError(null);
     try {
       const scan = await fetchScan(scanId);
-      if (!baselineScan && scan.readiness_score < 80) {
-        setBaselineScan(scan);
-      }
+      if (requestId !== projectLoadRequest.current) return;
       setCurrentScan(scan);
 
       const fData = await fetchFindings(scanId);
+      if (requestId !== projectLoadRequest.current) return;
       setFindings(fData.items);
+      const uploadedScanIds = JSON.parse(localStorage.getItem(uploadedScanIdsKey) || '[]') as string[];
+      const scans = (await fetchProjectScans(scan.project_id)).filter((item) => uploadedScanIds.includes(item.id));
+      if (requestId === projectLoadRequest.current) setAvailableScans(scans);
     } catch (e) {
       console.error('Failed to load scan data:', e);
+      if (requestId === projectLoadRequest.current) {
+        setAppError(e instanceof Error ? e.message : 'The uploaded scan could not be loaded.');
+      }
     }
   };
 
+  const ensureProjectForUpload = async (archiveName: string) => {
+    if (activeProject) return activeProject.id;
+    const projectName = archiveName.replace(/\.zip$/i, '').replace(/[_-]+/g, ' ').trim();
+    const project = await createProject(projectName || archiveName);
+    const userProjectIds = JSON.parse(localStorage.getItem(userProjectIdsKey) || '[]') as string[];
+    if (!userProjectIds.includes(project.id)) {
+      localStorage.setItem(userProjectIdsKey, JSON.stringify([...userProjectIds, project.id]));
+    }
+    setProjects((existing) => [project, ...existing.filter((item) => item.id !== project.id)]);
+    await selectProject(project);
+    return project.id;
+  };
+
   if (!user) {
-    return <LoginScreen onLogin={handleLogin} />;
+    return (
+      <>
+        <div
+          className="login-display-shell"
+          style={{ '--app-scale': displayScale / 100 } as React.CSSProperties}
+        >
+          <LoginScreen onLogin={handleLogin} />
+        </div>
+        <DisplayScaleControl
+          value={displayScale}
+          theme={theme}
+          onChange={(value) => {
+            setDisplayScale(value);
+            localStorage.setItem('keynova_display_scale', String(value));
+          }}
+        />
+      </>
+    );
   }
 
   return (
-    <div className="app-shell flex flex-col h-screen w-screen overflow-hidden" data-theme={theme} onPointerMove={trackSurfacePointer}>
+    <>
+      <div
+        className="app-shell flex flex-col h-screen w-screen overflow-hidden"
+        data-theme={theme}
+        style={{ '--app-scale': displayScale / 100 } as React.CSSProperties}
+      >
       {/* Topbar Navigation */}
       <Sidebar
         activeScreen={activeScreen}
@@ -158,7 +216,7 @@ export const App: React.FC = () => {
         openUploadModal={() => setIsUploadOpen(true)}
         openTrustModal={() => setIsTrustOpen(true)}
         currentScanId={currentScan?.id || null}
-        projectName={activeProject?.name || 'Quantum Vault Demo'}
+        projectName={activeProject?.name || currentScan?.archive_name || ''}
         user={user}
         onLogout={handleLogout}
         theme={theme}
@@ -167,11 +225,18 @@ export const App: React.FC = () => {
 
       {/* Main Content Area */}
       <main className="app-main flex-1 min-h-0 overflow-y-auto">
+        {appError && (
+          <div role="alert" className="mx-6 mt-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-900/50 dark:bg-red-950/40 dark:text-red-300">
+            <div className="flex items-start justify-between gap-3">
+              <span>{appError}</span>
+              <button type="button" className="text-xs underline" onClick={() => setAppError(null)}>Dismiss</button>
+            </div>
+          </div>
+        )}
         {activeScreen === 'dashboard' && (
           <Dashboard
             scan={currentScan}
             findings={findings}
-            isDemo={showDemoData}
             onOpenFinding={() => setActiveScreen('findings')}
             onNavigate={(screen) => screen === 'upload' ? setIsUploadOpen(true) : setActiveScreen(screen)}
           />
@@ -179,14 +244,14 @@ export const App: React.FC = () => {
 
         {activeScreen === 'findings' && (
           <FindingsExplorer
-            findings={findings}
+            findings={currentScan ? findings : []}
           />
         )}
 
         {activeScreen === 'graph' && (
           <DependencyGraph
             scanId={currentScan?.id || null}
-            projectName={activeProject?.name || 'Payment Gateway Core'}
+            projectName={activeProject?.name || currentScan?.archive_name || ''}
           />
         )}
 
@@ -194,23 +259,32 @@ export const App: React.FC = () => {
           <VerificationScreen
             currentScan={currentScan}
             baselineScan={baselineScan}
+            availableScans={availableScans}
+            onSelectBaseline={(scanId) => setBaselineScan(availableScans.find((scan) => scan.id === scanId) || null)}
             onTriggerRescan={() => setIsUploadOpen(true)}
           />
         )}
 
         {activeScreen === 'playground' && (
-          <PlaygroundScreen />
+          <PlaygroundScreen findings={findings} enabled={Boolean(currentScan)} />
         )}
       </main>
-
 
       {/* Upload & Git Clone Modal */}
       <UploadModal
         isOpen={isUploadOpen}
         onClose={() => setIsUploadOpen(false)}
         projectId={activeProject?.id || ''}
+        onEnsureProject={ensureProjectForUpload}
         baselineScanId={baselineScan?.id || currentScan?.id || null}
-        onScanCompleted={(newScanId) => {
+        onScanCompleted={(newScanId, comparedBaselineId) => {
+          const uploadedScanIds = JSON.parse(localStorage.getItem(uploadedScanIdsKey) || '[]') as string[];
+          if (!uploadedScanIds.includes(newScanId)) {
+            localStorage.setItem(uploadedScanIdsKey, JSON.stringify([...uploadedScanIds, newScanId]));
+          }
+          setBaselineScan(comparedBaselineId
+            ? availableScans.find((scan) => scan.id === comparedBaselineId) || null
+            : null);
           loadScanData(newScanId);
         }}
       />
@@ -220,6 +294,15 @@ export const App: React.FC = () => {
         isOpen={isTrustOpen}
         onClose={() => setIsTrustOpen(false)}
       />
-    </div>
+      </div>
+      <DisplayScaleControl
+        value={displayScale}
+        theme={theme}
+        onChange={(value) => {
+          setDisplayScale(value);
+          localStorage.setItem('keynova_display_scale', String(value));
+        }}
+      />
+    </>
   );
 };

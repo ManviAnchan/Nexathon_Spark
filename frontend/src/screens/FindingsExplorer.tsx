@@ -1,5 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import {
+  ArrowDown,
+  ArrowUp,
   ShieldAlert,
   Search,
   X,
@@ -27,23 +29,37 @@ export const FindingsExplorer: React.FC<FindingsExplorerProps> = ({ findings }) 
   const [activeFinding, setActiveFinding] = useState<Finding | null>(findings[0] || null);
   const [activeTab, setActiveTab] = useState<'source' | 'remediation'>('source');
   const [remediation, setRemediation] = useState<RemediationData | null>(null);
+  const [remediationError, setRemediationError] = useState<string | null>(null);
   const [isLoadingRemediation, setIsLoadingRemediation] = useState(false);
   const [copiedPatch, setCopiedPatch] = useState(false);
+  const [sortBy, setSortBy] = useState<'algorithm' | 'severity' | 'file_path' | 'usage'>('severity');
+  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
+  const [page, setPage] = useState(0);
+  const pageSize = 10;
 
   useEffect(() => {
     if (!activeFinding) return;
     setActiveTab('source');
     setRemediation(null);
+    setRemediationError(null);
   }, [activeFinding]);
+
+  useEffect(() => {
+    setActiveFinding((selected) => selected && findings.some((finding) => finding.id === selected.id)
+      ? selected
+      : findings[0] || null);
+  }, [findings]);
 
   const loadRemediation = async () => {
     if (!activeFinding) return;
     setIsLoadingRemediation(true);
+    setRemediationError(null);
     try {
       const data = await fetchRemediation(activeFinding.id);
       setRemediation(data);
     } catch (err) {
       console.error('Failed to load remediation:', err);
+      setRemediationError(err instanceof Error ? err.message : 'Remediation could not be loaded.');
     } finally {
       setIsLoadingRemediation(false);
     }
@@ -70,6 +86,33 @@ export const FindingsExplorer: React.FC<FindingsExplorerProps> = ({ findings }) 
     const matchesSev = selectedSeverity === 'all' || f.severity.toLowerCase() === selectedSeverity.toLowerCase();
     return matchesSearch && matchesSev;
   });
+  const filteredFindingIds = filtered.map((finding) => finding.id).join('|');
+  useEffect(() => {
+    if (activeFinding && !filtered.some((finding) => finding.id === activeFinding.id)) {
+      setActiveFinding(filtered[0] || null);
+    }
+  }, [activeFinding?.id, filteredFindingIds]);
+  const severityRank: Record<string, number> = { critical: 0, high: 1, medium: 2, low: 3, quantum_safe: 4 };
+  const sortedFindings = [...filtered].sort((left, right) => {
+    const leftValue = sortBy === 'severity' ? severityRank[left.severity] ?? 99 : left[sortBy].toLowerCase();
+    const rightValue = sortBy === 'severity' ? severityRank[right.severity] ?? 99 : right[sortBy].toLowerCase();
+    const order = typeof leftValue === 'number' && typeof rightValue === 'number'
+      ? leftValue - rightValue
+      : String(leftValue).localeCompare(String(rightValue));
+    return sortDirection === 'asc' ? order : -order;
+  });
+  const pageCount = Math.max(1, Math.ceil(sortedFindings.length / pageSize));
+  const visibleFindings = sortedFindings.slice(page * pageSize, (page + 1) * pageSize);
+  const changeSort = (column: typeof sortBy) => {
+    setPage(0);
+    if (sortBy === column) setSortDirection((direction) => direction === 'asc' ? 'desc' : 'asc');
+    else { setSortBy(column); setSortDirection('asc'); }
+  };
+  const sortLabel = (column: typeof sortBy) => sortBy === column
+    ? sortDirection === 'asc' ? <ArrowUp className="inline w-3 h-3 ml-1" /> : <ArrowDown className="inline w-3 h-3 ml-1" />
+    : null;
+
+  useEffect(() => setPage(0), [search, selectedSeverity]);
 
   return (
     <div className="p-6 md:p-8 space-y-5 max-w-7xl mx-auto h-full flex flex-col">
@@ -88,7 +131,7 @@ export const FindingsExplorer: React.FC<FindingsExplorerProps> = ({ findings }) 
           </p>
         </div>
 
-        <div className="flex items-center gap-2.5 w-full md:w-auto">
+          <div className="flex flex-wrap items-center gap-2.5 w-full md:w-auto">
           {/* Search Input */}
           <div className="relative flex-1 md:w-64">
             <Search className="w-3.5 h-3.5 text-zinc-400 absolute left-3 top-1/2 -translate-y-1/2" />
@@ -102,8 +145,15 @@ export const FindingsExplorer: React.FC<FindingsExplorerProps> = ({ findings }) 
           </div>
 
           {/* Severity Filter */}
-          <div className="flex items-center gap-1 bg-zinc-100 dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 p-0.5 rounded-lg text-xs">
-            {['all', 'critical', 'high', 'low'].map((sev) => (
+          <div className="flex flex-wrap items-center gap-1 bg-zinc-100 dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 p-0.5 rounded-lg text-xs">
+            {[
+              ['all', 'All'],
+              ['critical', 'Critical'],
+              ['high', 'High'],
+              ['medium', 'Medium'],
+              ['low', 'Low'],
+              ['quantum_safe', 'Quantum safe'],
+            ].map(([sev, label]) => (
               <button
                 key={sev}
                 onClick={() => setSelectedSeverity(sev)}
@@ -113,7 +163,7 @@ export const FindingsExplorer: React.FC<FindingsExplorerProps> = ({ findings }) 
                     : 'text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-200'
                 }`}
               >
-                {sev}
+                {label}
               </button>
             ))}
           </div>
@@ -128,11 +178,11 @@ export const FindingsExplorer: React.FC<FindingsExplorerProps> = ({ findings }) 
             <table className="w-full text-left text-xs border-collapse">
               <thead>
                 <tr className="border-b border-zinc-100 dark:border-zinc-800 bg-zinc-50/70 dark:bg-zinc-950/50 text-[10px] text-zinc-400 font-mono uppercase tracking-wider">
-                  <th className="py-3 px-4">Algorithm</th>
-                  <th className="py-3 px-4">Severity</th>
+                  <th className="py-3 px-4" aria-sort={sortBy === 'algorithm' ? sortDirection === 'asc' ? 'ascending' : 'descending' : 'none'}><button type="button" onClick={() => changeSort('algorithm')}>Algorithm{sortLabel('algorithm')}</button></th>
+                  <th className="py-3 px-4" aria-sort={sortBy === 'severity' ? sortDirection === 'asc' ? 'ascending' : 'descending' : 'none'}><button type="button" onClick={() => changeSort('severity')}>Severity{sortLabel('severity')}</button></th>
                   <th className="py-3 px-4">HNDL Risk</th>
-                  <th className="py-3 px-4">File Location</th>
-                  <th className="py-3 px-4">Usage</th>
+                  <th className="py-3 px-4" aria-sort={sortBy === 'file_path' ? sortDirection === 'asc' ? 'ascending' : 'descending' : 'none'}><button type="button" onClick={() => changeSort('file_path')}>File Location{sortLabel('file_path')}</button></th>
+                  <th className="py-3 px-4" aria-sort={sortBy === 'usage' ? sortDirection === 'asc' ? 'ascending' : 'descending' : 'none'}><button type="button" onClick={() => changeSort('usage')}>Usage{sortLabel('usage')}</button></th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-zinc-100 dark:divide-zinc-800 font-sans">
@@ -143,15 +193,15 @@ export const FindingsExplorer: React.FC<FindingsExplorerProps> = ({ findings }) 
                     </td>
                   </tr>
                 ) : (
-                  filtered.map((f) => {
+                  visibleFindings.map((f) => {
                     const isSelected = activeFinding?.id === f.id;
                     return (
                       <tr
                         key={f.id}
                         onClick={() => setActiveFinding(f)}
-                        className={`cursor-pointer transition-colors ${
+                        className={`cursor-pointer transition-colors ${isSelected ? 'finding-row-selected' : ''} ${
                           isSelected
-                            ? 'bg-blue-50/70 dark:bg-blue-950/20 border-l-2 border-l-blue-600'
+                          ? 'bg-blue-50/70 dark:bg-blue-950/20 border-l-2 border-l-blue-600'
                             : 'hover:bg-zinc-50/80 dark:hover:bg-zinc-800/40'
                         }`}
                       >
@@ -205,6 +255,14 @@ export const FindingsExplorer: React.FC<FindingsExplorerProps> = ({ findings }) 
                 )}
               </tbody>
             </table>
+          </div>
+          <div className="flex items-center justify-between gap-3 border-t border-zinc-100 dark:border-zinc-800 px-4 py-2 text-[11px] text-zinc-500 dark:text-zinc-400">
+            <span>{sortedFindings.length ? `${page * pageSize + 1}–${Math.min((page + 1) * pageSize, sortedFindings.length)} of ${sortedFindings.length}` : '0 findings'}</span>
+            <div className="flex items-center gap-2">
+              <button type="button" className="rounded px-2 py-1 hover:bg-zinc-100 dark:hover:bg-zinc-800 disabled:opacity-40" disabled={page === 0} onClick={() => setPage((value) => Math.max(0, value - 1))}>Previous</button>
+              <span>Page {page + 1} of {pageCount}</span>
+              <button type="button" className="rounded px-2 py-1 hover:bg-zinc-100 dark:hover:bg-zinc-800 disabled:opacity-40" disabled={page + 1 >= pageCount} onClick={() => setPage((value) => Math.min(pageCount - 1, value + 1))}>Next</button>
+            </div>
           </div>
         </div>
 
@@ -275,12 +333,12 @@ export const FindingsExplorer: React.FC<FindingsExplorerProps> = ({ findings }) 
                   </div>
 
                   {/* Threat Evidence */}
-                  <div className="mt-3 p-3.5 rounded-xl bg-amber-50/70 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900/50 space-y-1">
-                    <div className="text-[10px] font-semibold uppercase tracking-wider text-amber-700 dark:text-amber-400 flex items-center gap-1.5">
-                      <AlertTriangle className="w-3.5 h-3.5" />
+                  <div className="mt-3 p-3.5 rounded-xl bg-amber-50/80 dark:bg-[#322a1b] border border-amber-200 dark:border-[#5a482b] space-y-1.5">
+                    <div className="text-[10px] font-bold uppercase tracking-wider text-amber-800 dark:text-[#f4d38c] flex items-center gap-1.5">
+                      <AlertTriangle className="w-3.5 h-3.5 text-amber-600 dark:text-[#f4d38c]" />
                       <span>Vulnerability Assessment</span>
                     </div>
-                    <p className="text-xs text-zinc-700 dark:text-zinc-300 leading-relaxed">
+                    <p className="text-xs text-zinc-800 dark:text-[#ebe6da] leading-relaxed font-normal">
                       {activeFinding.evidence}
                     </p>
                   </div>
@@ -373,6 +431,7 @@ export const FindingsExplorer: React.FC<FindingsExplorerProps> = ({ findings }) 
                     </>
                   ) : (
                     <div className="p-6 text-center">
+                      {remediationError && <p role="alert" className="mb-3 text-xs text-red-600 dark:text-red-400">{remediationError}</p>}
                       <button
                         onClick={loadRemediation}
                         className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold shadow-sm transition-all inline-flex items-center gap-1.5"

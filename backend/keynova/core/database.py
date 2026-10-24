@@ -1,5 +1,6 @@
 import uuid
 from datetime import datetime, timezone
+from typing import Any
 from sqlalchemy import (
     create_engine, Column, String, Integer, Float, Boolean, Text, DateTime, ForeignKey, Index
 )
@@ -47,28 +48,28 @@ class Project(Base):
 class Scan(Base):
     __tablename__ = "scans"
 
-    id = Column(String(36), primary_key=True, default=generate_uuid)
-    project_id = Column(String(36), ForeignKey("projects.id", ondelete="CASCADE"), nullable=False)
-    scan_number = Column(Integer, default=1)
-    status = Column(String(32), default="pending")  # pending, analyzing, completed, failed
-    scan_type = Column(String(32), default="archive")  # archive, git, local
-    archive_name = Column(String(255), nullable=True)
-    source_path = Column(String(512), nullable=True)
+    id: Any = Column(String(36), primary_key=True, default=generate_uuid)
+    project_id: Any = Column(String(36), ForeignKey("projects.id", ondelete="CASCADE"), nullable=False)
+    scan_number: Any = Column(Integer, default=1)
+    status: Any = Column(String(32), default="pending")  # pending, analyzing, completed, failed
+    scan_type: Any = Column(String(32), default="archive")  # archive, git, local
+    archive_name: Any = Column(String(255), nullable=True)
+    source_path: Any = Column(String(512), nullable=True)
 
-    total_files = Column(Integer, default=0)
-    scanned_files = Column(Integer, default=0)
-    readiness_score = Column(Integer, default=0)
-    coverage_percent = Column(Float, default=0.0)
+    total_files: Any = Column(Integer, default=0)
+    scanned_files: Any = Column(Integer, default=0)
+    readiness_score: Any = Column(Integer, default=0)
+    coverage_percent: Any = Column(Float, default=0.0)
 
-    critical_count = Column(Integer, default=0)
-    high_count = Column(Integer, default=0)
-    medium_count = Column(Integer, default=0)
-    low_count = Column(Integer, default=0)
-    quantum_safe_count = Column(Integer, default=0)
-    hndl_count = Column(Integer, default=0)
+    critical_count: Any = Column(Integer, default=0)
+    high_count: Any = Column(Integer, default=0)
+    medium_count: Any = Column(Integer, default=0)
+    low_count: Any = Column(Integer, default=0)
+    quantum_safe_count: Any = Column(Integer, default=0)
+    hndl_count: Any = Column(Integer, default=0)
 
-    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
-    completed_at = Column(DateTime(timezone=True), nullable=True)
+    created_at: Any = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    completed_at: Any = Column(DateTime(timezone=True), nullable=True)
 
     project = relationship("Project", back_populates="scans")
     findings = relationship("Finding", back_populates="scan", cascade="all, delete-orphan")

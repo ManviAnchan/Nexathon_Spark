@@ -33,6 +33,7 @@ class ScanStatusResponse(BaseModel):
     hndl_count: int
     created_at: datetime
     completed_at: Optional[datetime] = None
+    cache_stats: Optional[Dict[str, Any]] = None
 
     model_config = ConfigDict(from_attributes=True)
 

@@ -25,6 +25,15 @@ export interface ScanStatus {
   hndl_count: number;
   created_at: string;
   completed_at?: string;
+  cache_stats?: CacheStats;
+}
+
+export interface CacheStats {
+  hits: number;
+  misses: number;
+  total_requests: number;
+  hit_ratio: number;
+  bypass_ratio: number;
 }
 
 export interface Finding {
