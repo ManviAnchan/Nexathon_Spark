@@ -501,3 +501,255 @@
 .app-shell[data-theme="dark"] .cli-box { background:#1b1a16; border:1px solid #36342c; }
 @media(max-width:900px) { .dashboard-infra-grid { grid-template-columns:1fr; } }
 
+/* =========================================================================
+   HIGH-CONTRAST DEPENDENCY GRAPH THEME (DARK & LIGHT)
+   Guarantees 100% visibility, crisp typography, and luminous contrast
+   ========================================================================= */
+
+.graph-canvas-viewport {
+  background-color: #0c0e12 !important;
+  background-image: radial-gradient(rgba(255, 255, 255, 0.15) 1px, transparent 1px) !important;
+  background-size: 20px 20px !important;
+  border-color: #27272a !important;
+}
+[data-theme="light"] .graph-canvas-viewport {
+  background-color: #f8fafc !important;
+  background-image: radial-gradient(rgba(0, 0, 0, 0.12) 1px, transparent 1px) !important;
+  border-color: #e2e8f0 !important;
+}
+
+/* Base Node Card */
+.dep-node-card {
+  position: absolute !important;
+  padding: 10px 14px !important;
+  border-radius: 12px !important;
+  border-width: 1.5px !important;
+  border-style: solid !important;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.4) !important;
+  transition: all 0.15s ease-in-out !important;
+  cursor: pointer !important;
+  text-align: left !important;
+}
+.dep-node-card:hover {
+  transform: translateY(-2px) !important;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.55) !important;
+}
+.dep-node-card.selected {
+  outline: 2px solid #3b82f6 !important;
+  outline-offset: 2px !important;
+  box-shadow: 0 0 16px rgba(59, 130, 246, 0.6) !important;
+}
+
+/* 1. Root / Application Node */
+.dep-node-application {
+  background: linear-gradient(135deg, #1e293b, #0f172a) !important;
+  border-color: #3b82f6 !important;
+}
+[data-theme="light"] .dep-node-application {
+  background: linear-gradient(135deg, #eff6ff, #dbeafe) !important;
+  border-color: #2563eb !important;
+}
+.dep-node-application .dep-node-title {
+  color: #ffffff !important;
+  font-weight: 700 !important;
+}
+[data-theme="light"] .dep-node-application .dep-node-title {
+  color: #1e3a8a !important;
+}
+.dep-node-application .dep-node-sub {
+  color: #93c5fd !important;
+}
+[data-theme="light"] .dep-node-application .dep-node-sub {
+  color: #1d4ed8 !important;
+}
+
+/* 2. File Nodes */
+.dep-node-file {
+  background: #18181b !important;
+  border-color: #3f3f46 !important;
+}
+[data-theme="light"] .dep-node-file {
+  background: #ffffff !important;
+  border-color: #cbd5e1 !important;
+}
+.dep-node-file .dep-node-title {
+  color: #ffffff !important;
+  font-weight: 600 !important;
+}
+[data-theme="light"] .dep-node-file .dep-node-title {
+  color: #0f172a !important;
+}
+.dep-node-file .dep-node-sub {
+  color: #a1a1aa !important;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace !important;
+}
+[data-theme="light"] .dep-node-file .dep-node-sub {
+  color: #64748b !important;
+}
+
+/* 3. Library / Dependency Nodes */
+.dep-node-library {
+  background: #18181b !important;
+  border-color: #6b21a8 !important;
+}
+[data-theme="light"] .dep-node-library {
+  background: #faf5ff !important;
+  border-color: #c084fc !important;
+}
+.dep-node-library .dep-node-title {
+  color: #ffffff !important;
+  font-weight: 600 !important;
+}
+[data-theme="light"] .dep-node-library .dep-node-title {
+  color: #581c87 !important;
+}
+.dep-node-library .dep-node-sub {
+  color: #d8b4fe !important;
+}
+[data-theme="light"] .dep-node-library .dep-node-sub {
+  color: #7e22ce !important;
+}
+
+/* 4. Critical / High / HNDL Findings */
+.dep-node-critical, .dep-node-high {
+  background: linear-gradient(135deg, #351317, #1f0a0d) !important;
+  border-color: #ef4444 !important;
+  box-shadow: 0 4px 14px rgba(239, 68, 68, 0.3) !important;
+}
+[data-theme="light"] .dep-node-critical, [data-theme="light"] .dep-node-high {
+  background: linear-gradient(135deg, #fef2f2, #fee2e2) !important;
+  border-color: #f87171 !important;
+}
+.dep-node-critical .dep-node-title, .dep-node-high .dep-node-title {
+  color: #ffffff !important;
+  font-weight: 700 !important;
+}
+[data-theme="light"] .dep-node-critical .dep-node-title, [data-theme="light"] .dep-node-high .dep-node-title {
+  color: #991b1b !important;
+}
+.dep-node-critical .dep-node-sub, .dep-node-high .dep-node-sub {
+  color: #fca5a5 !important;
+}
+[data-theme="light"] .dep-node-critical .dep-node-sub, [data-theme="light"] .dep-node-high .dep-node-sub {
+  color: #b91c1c !important;
+}
+
+/* 5. Low / Medium / Safe Findings */
+.dep-node-low, .dep-node-medium, .dep-node-safe {
+  background: linear-gradient(135deg, #102419, #0a1710) !important;
+  border-color: #10b981 !important;
+  box-shadow: 0 4px 14px rgba(16, 185, 129, 0.25) !important;
+}
+[data-theme="light"] .dep-node-low, [data-theme="light"] .dep-node-medium, [data-theme="light"] .dep-node-safe {
+  background: linear-gradient(135deg, #ecfdf5, #d1fae5) !important;
+  border-color: #34d399 !important;
+}
+.dep-node-low .dep-node-title, .dep-node-medium .dep-node-title, .dep-node-safe .dep-node-title {
+  color: #ffffff !important;
+  font-weight: 700 !important;
+}
+[data-theme="light"] .dep-node-low .dep-node-title, [data-theme="light"] .dep-node-medium .dep-node-title, [data-theme="light"] .dep-node-safe .dep-node-title {
+  color: #065f46 !important;
+}
+.dep-node-low .dep-node-sub, .dep-node-medium .dep-node-sub, .dep-node-safe .dep-node-sub {
+  color: #86efac !important;
+}
+[data-theme="light"] .dep-node-low .dep-node-sub, [data-theme="light"] .dep-node-medium .dep-node-sub, [data-theme="light"] .dep-node-safe .dep-node-sub {
+  color: #047857 !important;
+}
+
+/* HNDL Badge */
+.dep-badge-hndl {
+  display: inline-flex !important;
+  align-items: center !important;
+  padding: 2px 7px !important;
+  border-radius: 6px !important;
+  font-size: 9px !important;
+  font-weight: 800 !important;
+  letter-spacing: 0.08em !important;
+  text-transform: uppercase !important;
+  background: #dc2626 !important;
+  color: #ffffff !important;
+  box-shadow: 0 0 10px rgba(220, 38, 38, 0.6) !important;
+}
+
+/* Severity Badge */
+.dep-badge-sev {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace !important;
+  font-size: 10px !important;
+  font-weight: 700 !important;
+  text-transform: capitalize !important;
+}
+.dep-badge-sev.sev-critical { color: #f87171 !important; }
+.dep-badge-sev.sev-high { color: #fb923c !important; }
+.dep-badge-sev.sev-medium { color: #facc15 !important; }
+.dep-badge-sev.sev-low { color: #4ade80 !important; }
+
+/* Selected Node Detail Drawer */
+.dep-detail-drawer {
+  background: #18181b !important;
+  border: 1.5px solid #3f3f46 !important;
+  border-radius: 14px !important;
+  padding: 16px 20px !important;
+  box-shadow: 0 12px 36px rgba(0, 0, 0, 0.5) !important;
+  color: #ffffff !important;
+}
+[data-theme="light"] .dep-detail-drawer {
+  background: #ffffff !important;
+  border-color: #cbd5e1 !important;
+  color: #0f172a !important;
+  box-shadow: 0 12px 36px rgba(0, 0, 0, 0.08) !important;
+}
+.dep-detail-drawer-title {
+  color: #ffffff !important;
+  font-size: 14px !important;
+  font-weight: 700 !important;
+  letter-spacing: -0.01em !important;
+}
+[data-theme="light"] .dep-detail-drawer-title {
+  color: #0f172a !important;
+}
+.dep-detail-drawer-text {
+  color: #cbd5e1 !important;
+  font-size: 12px !important;
+}
+[data-theme="light"] .dep-detail-drawer-text {
+  color: #475569 !important;
+}
+.dep-detail-drawer-code {
+  background: #27272a !important;
+  color: #38bdf8 !important;
+  padding: 2px 6px !important;
+  border-radius: 5px !important;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace !important;
+  font-size: 11px !important;
+}
+[data-theme="light"] .dep-detail-drawer-code {
+  background: #f1f5f9 !important;
+  color: #0284c7 !important;
+}
+.dep-detail-drawer-btn {
+  background: #27272a !important;
+  color: #ffffff !important;
+  border: 1px solid #52525b !important;
+  padding: 6px 14px !important;
+  border-radius: 8px !important;
+  font-size: 12px !important;
+  font-weight: 600 !important;
+  cursor: pointer !important;
+  transition: all 0.15s ease !important;
+}
+.dep-detail-drawer-btn:hover {
+  background: #3f3f46 !important;
+  border-color: #71717a !important;
+}
+[data-theme="light"] .dep-detail-drawer-btn {
+  background: #f1f5f9 !important;
+  color: #0f172a !important;
+  border-color: #cbd5e1 !important;
+}
+[data-theme="light"] .dep-detail-drawer-btn:hover {
+  background: #e2e8f0 !important;
+}
+
+

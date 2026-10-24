@@ -179,7 +179,7 @@ export const DependencyGraph: React.FC<DependencyGraphProps> = ({ scanId, projec
       ) : null}
 
       {graphData && positionedNodes.length > 0 ? (
-        <div className="flex-1 rounded-xl p-6 min-h-[500px] relative overflow-auto bg-zinc-50 dark:bg-[#1f1e1a] border border-zinc-200 dark:border-zinc-800 shadow-inner">
+        <div className="graph-canvas-viewport flex-1 rounded-xl p-6 min-h-[500px] relative overflow-auto shadow-inner border">
           <div
             className="relative"
             style={{
@@ -213,7 +213,7 @@ export const DependencyGraph: React.FC<DependencyGraphProps> = ({ scanId, projec
                   target.data.severity === 'critical' ||
                   target.data.severity === 'high';
 
-                const strokeColor = isVulnerable ? '#dc6d5b' : '#9c9588';
+                const strokeColor = isVulnerable ? '#ef4444' : '#64748b';
 
                 return (
                   <path
@@ -221,36 +221,42 @@ export const DependencyGraph: React.FC<DependencyGraphProps> = ({ scanId, projec
                     d={`M ${sx} ${sy} C ${cx1} ${sy}, ${cx2} ${ty}, ${tx} ${ty}`}
                     fill="none"
                     stroke={strokeColor}
-                    strokeWidth={isVulnerable ? '2' : '1.5'}
-                    strokeDasharray={edge.animated || target.data.hndl ? '5 4' : undefined}
+                    strokeWidth={isVulnerable ? '2.5' : '1.8'}
+                    strokeDasharray={isVulnerable ? '6 4' : undefined}
                   />
                 );
               })}
             </svg>
 
-            {/* Render Nodes with Strict Inline Absolute Positioning */}
+            {/* Render Nodes with High-Contrast Themed Cards */}
             {positionedNodes.map((node) => {
               const severity = String(node.data.severity || '').toLowerCase();
               const label = String(node.data.label || node.id);
               const isHndl = Boolean(node.data.hndl);
               const isSelected = selectedNode?.id === node.id;
 
+              let nodeClass = 'dep-node-card ';
+              if (isSelected) nodeClass += 'selected ';
+              if (node.type === 'application') {
+                nodeClass += 'dep-node-application';
+              } else if (node.type === 'file') {
+                nodeClass += 'dep-node-file';
+              } else if (node.type === 'library') {
+                nodeClass += 'dep-node-library';
+              } else if (isHndl || severity === 'critical') {
+                nodeClass += 'dep-node-critical';
+              } else if (severity === 'high') {
+                nodeClass += 'dep-node-high';
+              } else {
+                nodeClass += 'dep-node-safe';
+              }
+
               return (
                 <button
                   key={node.id}
                   type="button"
                   onClick={() => setSelectedNode(node)}
-                  className={`!absolute p-3 rounded-xl border text-left transition-all shadow-sm ${
-                    isSelected
-                      ? 'border-blue-500 ring-2 ring-blue-500/30'
-                      : 'border-zinc-200 dark:border-[#3d3a33] hover:border-zinc-400 dark:hover:border-zinc-500'
-                  } ${
-                    node.type === 'application'
-                      ? 'bg-blue-50/70 dark:bg-[#1d2733] border-blue-200 dark:border-blue-900/50'
-                      : node.type === 'algorithm' && isHndl
-                      ? 'bg-red-50/70 dark:bg-[#382624] border-red-200 dark:border-red-900/60'
-                      : 'bg-white dark:bg-[#282722]'
-                  }`}
+                  className={nodeClass}
                   style={{
                     position: 'absolute',
                     left: `${node.layoutX}px`,
@@ -262,34 +268,36 @@ export const DependencyGraph: React.FC<DependencyGraphProps> = ({ scanId, projec
                   <div className="flex items-center justify-between gap-1.5">
                     <div className="flex items-center gap-2 min-w-0">
                       {node.type === 'application' ? (
-                        <Layers className="w-4 h-4 shrink-0 text-blue-500" />
+                        <Layers className="w-4 h-4 shrink-0 text-blue-400" />
                       ) : node.type === 'file' ? (
-                        <FileCode2 className="w-4 h-4 shrink-0 text-zinc-400" />
+                        <FileCode2 className="w-4 h-4 shrink-0 text-sky-400" />
                       ) : node.type === 'library' ? (
-                        <Cpu className="w-4 h-4 shrink-0 text-indigo-400" />
-                      ) : isHndl ? (
-                        <ShieldAlert className="w-4 h-4 shrink-0 text-red-500" />
+                        <Cpu className="w-4 h-4 shrink-0 text-purple-400" />
+                      ) : isHndl || severity === 'critical' ? (
+                        <ShieldAlert className="w-4 h-4 shrink-0 text-red-400" />
+                      ) : severity === 'high' ? (
+                        <ShieldAlert className="w-4 h-4 shrink-0 text-orange-400" />
                       ) : (
-                        <ShieldCheck className="w-4 h-4 shrink-0 text-emerald-500" />
+                        <ShieldCheck className="w-4 h-4 shrink-0 text-emerald-400" />
                       )}
-                      <span className="font-semibold text-xs text-zinc-900 dark:text-zinc-100 truncate">
+                      <span className="dep-node-title text-xs truncate">
                         {label}
                       </span>
                     </div>
 
                     {isHndl ? (
-                      <span className="px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider bg-red-100 dark:bg-red-950 text-red-700 dark:text-red-400 shrink-0">
+                      <span className="dep-badge-hndl shrink-0">
                         HNDL
                       </span>
                     ) : null}
                   </div>
 
-                  <div className="mt-1 flex items-center justify-between text-[10px] text-zinc-500 dark:text-zinc-400 truncate">
-                    <span className="truncate">
+                  <div className="mt-1 flex items-center justify-between text-[10px] truncate">
+                    <span className="dep-node-sub truncate">
                       {node.data.full_path || node.data.kind || node.data.usage || (node.type === 'application' ? 'Service Boundary' : 'Asset')}
                     </span>
                     {severity ? (
-                      <span className="capitalize font-mono ml-1 text-zinc-600 dark:text-zinc-300">
+                      <span className={`dep-badge-sev sev-${severity} ml-1 shrink-0`}>
                         {severity}
                       </span>
                     ) : null}
@@ -303,22 +311,49 @@ export const DependencyGraph: React.FC<DependencyGraphProps> = ({ scanId, projec
 
       {/* Selected Node Details Drawer */}
       {selectedNode ? (
-        <div className="p-4 rounded-xl bg-white dark:bg-[#282722] border border-zinc-200 dark:border-[#3b3931] flex items-center justify-between shadow-sm">
-          <div>
-            <div className="text-xs font-bold text-zinc-900 dark:text-zinc-100">
-              {String(selectedNode.data.label || selectedNode.id)}
+        <div className="dep-detail-drawer flex items-center justify-between">
+          <div className="min-w-0 flex-1 mr-4">
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="dep-detail-drawer-title">
+                {String(selectedNode.data.label || selectedNode.id)}
+              </span>
+              <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-blue-500/20 text-blue-300 border border-blue-500/40">
+                {selectedNode.type}
+              </span>
+              {selectedNode.data.hndl && (
+                <span className="dep-badge-hndl">
+                  HNDL Threat
+                </span>
+              )}
             </div>
-            <div className="text-[11px] text-zinc-500 dark:text-zinc-400 mt-1">
-              Type: <strong className="capitalize">{selectedNode.type}</strong>
-              {selectedNode.data.full_path ? ` · Path: ${selectedNode.data.full_path}` : ''}
-              {selectedNode.data.usage ? ` · Usage: ${selectedNode.data.usage}` : ''}
-              {selectedNode.data.severity ? ` · Severity: ${selectedNode.data.severity}` : ''}
-              {selectedNode.data.hndl ? ' · Harvest-Now-Decrypt-Later Risk' : ''}
+            <div className="dep-detail-drawer-text mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1">
+              {selectedNode.data.full_path && (
+                <span>
+                  <strong>Path:</strong>{' '}
+                  <code className="dep-detail-drawer-code">
+                    {selectedNode.data.full_path}
+                  </code>
+                </span>
+              )}
+              {selectedNode.data.usage && (
+                <span>
+                  <strong>Usage:</strong> {selectedNode.data.usage}
+                </span>
+              )}
+              {selectedNode.data.severity && (
+                <span>
+                  <strong>Severity:</strong>{' '}
+                  <span className={`dep-badge-sev sev-${selectedNode.data.severity}`}>
+                    {selectedNode.data.severity}
+                  </span>
+                </span>
+              )}
             </div>
           </div>
           <button
+            type="button"
             onClick={() => setSelectedNode(null)}
-            className="text-xs text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-200 px-2 py-1 rounded"
+            className="dep-detail-drawer-btn shrink-0"
           >
             Dismiss
           </button>
