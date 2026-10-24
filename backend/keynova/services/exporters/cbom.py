@@ -1,3 +1,4 @@
+import json
 import re
 import uuid
 from datetime import datetime, timezone
@@ -81,7 +82,7 @@ def _resolve_parameter_set_identifier(
     if not algorithm:
         return None
 
-    alg_clean = str(algorithm).strip().upper()
+    alg_clean = algorithm.strip().upper()
     if alg_clean in ["UNKNOWN", "NONE", "N/A", ""]:
         return None
 
@@ -340,7 +341,7 @@ def _calculate_security_strengths(
     if not algorithm:
         return None, None
 
-    alg_clean = str(algorithm).strip().upper()
+    alg_clean = algorithm.strip().upper()
     if not alg_clean or alg_clean in ["UNKNOWN", "NONE"]:
         return None, None
 
@@ -732,7 +733,7 @@ def generate_cyclonedx_cbom(
         # Preserve Keynova-specific properties using CycloneDX standard component properties
         qv_val = "true" if is_quantum_vulnerable is True else ("false" if is_quantum_vulnerable is False else "unknown")
         component_props: List[Dict[str, str]] = [
-            {"name": "keynova:quantum_status", "value": str(q_status)},
+            {"name": "keynova:quantum_status", "value": q_status},
             {"name": "keynova:quantum_vulnerable", "value": qv_val},
             {"name": "keynova:hndl", "value": "true" if hndl else "false"},
         ]
@@ -810,3 +811,12 @@ def generate_cyclonedx_cbom(
         },
         "components": components
     }
+
+
+def serialize_cbom_json(cbom: Dict[str, Any], indent: int = 2) -> str:
+    """
+    Serializes a CycloneDX CBOM dictionary into human-readable, pretty-printed JSON
+    with standard line breaks and indentation.
+    """
+    return json.dumps(cbom, indent=indent)
+

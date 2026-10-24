@@ -15,7 +15,7 @@ from keynova.api.v1.remediation import router as remediation_router
 async def lifespan(app: FastAPI):
     # Initialize database tables on startup
     init_db()
-    print(f"🚀 Keynova Core Engine initialized. Database backend: {DB_TYPE}")
+    print(f"[Keynova] Core Engine initialized. Database backend: {DB_TYPE}")
     yield
 
 app = FastAPI(
